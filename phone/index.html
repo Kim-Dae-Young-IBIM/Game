@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <!-- 확대 방지 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#ffd166" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <title>흔들흔들 동물 밴드</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <!-- 1) 접속: 방 코드(부모가 입력, QR로 들어오면 자동) + 큰 시작 버튼 -->
+    <main id="join" class="screen">
+      <div id="code-row">
+        <svg class="tv-icon" viewBox="0 0 64 64" aria-hidden="true">
+          <rect x="4" y="10" width="56" height="38" rx="6" fill="#1b1035" />
+          <rect x="10" y="16" width="44" height="26" rx="3" fill="#4cc9f0" />
+          <rect x="22" y="52" width="20" height="5" rx="2" fill="#1b1035" />
+        </svg>
+        <input
+          id="code"
+          type="tel"
+          inputmode="numeric"
+          pattern="[0-9]*"
+          maxlength="4"
+          autocomplete="off"
+          placeholder="····"
+          aria-label="방 코드"
+        />
+      </div>
+      <button id="go" class="big-btn" aria-label="시작">
+        <svg viewBox="0 0 100 100" aria-hidden="true"><polygon points="36,24 80,50 36,76" fill="#fff" /></svg>
+      </button>
+    </main>
+
+    <!-- 2) 연주: 동물 그림을 크게. 흔들면 TV에서 소리가 난다. -->
+    <main id="play" class="screen hidden">
+      <img id="animal" src="/animals/cat.svg" alt="" draggable="false" />
+      <div id="offline" class="hidden" aria-hidden="true">
+        <svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="28" fill="#e63946" /><rect x="16" y="28" width="32" height="8" rx="4" fill="#fff" /></svg>
+      </div>
+    </main>
+
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>

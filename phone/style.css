@@ -1,0 +1,133 @@
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #ffd166;
+  font-family: system-ui, sans-serif;
+  /* 확대·당겨서 새로고침·길게 눌러 메뉴 방지 */
+  touch-action: manipulation;
+  overscroll-behavior: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.screen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.hidden {
+  display: none !important;
+}
+
+#code-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 48px;
+}
+.tv-icon {
+  width: 72px;
+  height: 72px;
+  margin-right: 12px;
+}
+#code {
+  width: 4.2em;
+  font-size: 64px;
+  font-weight: 800;
+  letter-spacing: 0.15em;
+  text-align: center;
+  border: 6px solid #1b1035;
+  border-radius: 20px;
+  padding: 8px 4px;
+  color: #1b1035;
+  background: #fff;
+  outline: none;
+  -webkit-user-select: text;
+  user-select: text;
+}
+#code.wrong {
+  border-color: #e63946;
+  animation: wiggle 0.4s;
+}
+@keyframes wiggle {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-14px);
+  }
+  75% {
+    transform: translateX(14px);
+  }
+}
+
+/* 아이 대상 버튼: 최소 120px */
+.big-btn {
+  width: 180px;
+  height: 180px;
+  min-width: 120px;
+  min-height: 120px;
+  border-radius: 50%;
+  border: 10px solid #fff;
+  background: #ff5d73;
+  box-shadow: 0 10px 0 #c43c52;
+  padding: 0;
+}
+.big-btn:active {
+  transform: translateY(6px);
+  box-shadow: 0 4px 0 #c43c52;
+}
+.big-btn svg {
+  width: 100%;
+  height: 100%;
+}
+.big-btn.waiting {
+  opacity: 0.6;
+}
+
+#play {
+  background: radial-gradient(circle at 50% 45%, #fff3b0 0%, #ffd166 70%);
+}
+#animal {
+  width: 92vmin;
+  height: 92vmin;
+  pointer-events: auto;
+}
+#animal.bounce {
+  animation: bounce 0.35s ease-out;
+}
+@keyframes bounce {
+  0% {
+    transform: scale(1, 1);
+  }
+  25% {
+    transform: scale(1.12, 0.88);
+  }
+  55% {
+    transform: translateY(-6%) scale(0.95, 1.08);
+  }
+  100% {
+    transform: scale(1, 1);
+  }
+}
+#play.offline #animal {
+  filter: grayscale(1);
+  opacity: 0.6;
+}
+#offline {
+  position: absolute;
+  top: 24px;
+  right: 24px;
+  width: 56px;
+  height: 56px;
+}

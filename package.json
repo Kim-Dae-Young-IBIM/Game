@@ -1,0 +1,28 @@
+{
+  "name": "shaky-animal-band",
+  "version": "0.1.0",
+  "private": true,
+  "description": "흔들흔들 동물 밴드 — 폰을 흔들면 TV 속 동물이 연주하는 가족 합주 게임",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "build": "vite build",
+    "start": "node server/index.js",
+    "test": "node --test \"tests/**/*.test.js\"",
+    "sounds": "node scripts/gen-sounds.mjs",
+    "tunnel": "ngrok http 3000"
+  },
+  "dependencies": {
+    "howler": "^2.2.4",
+    "phaser": "^3.90.0",
+    "qrcode": "^1.5.4",
+    "socket.io": "^4.8.1",
+    "socket.io-client": "^4.8.1"
+  },
+  "devDependencies": {
+    "vite": "^8.0.0"
+  }
+}

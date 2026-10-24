@@ -1,10 +1,31 @@
 {
   "version": 3,
-  "packs": [],
-  "forbidden": [],
+  "packs": [
+    "dev"
+  ],
+  "forbidden": [
+    {
+      "pattern": "-----BEGIN [A-Z ]*PRIVATE KEY-----",
+      "flags": "",
+      "extensions": [],
+      "message": "개인키·인증서 내용을 저장소 파일에 쓰지 마세요. 인증서는 저장소 밖에 두거나 터널을 쓰세요."
+    },
+    {
+      "pattern": "^\\s*(NGROK_AUTHTOKEN|[A-Z_]*(SECRET|API_KEY|TOKEN))\\s*=\\s*\\S+",
+      "flags": "m",
+      "extensions": [
+        ".js",
+        ".mjs",
+        ".json",
+        ".md",
+        ".sh"
+      ],
+      "message": "비밀값(토큰·키)을 파일에 직접 쓰지 마세요. .env는 커밋 금지이며 .gitignore에 있습니다."
+    }
+  ],
   "checks": [],
   "verify": {
-    "command": "",
+    "command": "npm run build && npm test",
     "localOnly": false,
     "maxRetries": 3
   }

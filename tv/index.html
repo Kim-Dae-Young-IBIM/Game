@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>흔들흔들 동물 밴드</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <div id="stage"></div>
+
+    <!-- 부모용 접속 안내: QR + 4자리 코드. 시작 후에는 오른쪽 위로 작아진다. -->
+    <aside id="join-card" class="big">
+      <img id="qr" alt="" width="360" height="360" />
+      <div id="code" aria-label="방 코드">····</div>
+      <div id="players" aria-label="연결된 폰"></div>
+    </aside>
+
+    <!-- 시작: 소리 잠금 해제(브라우저 정책상 사용자 입력이 필요). 리모컨 OK 키로 누를 수 있게 자동 포커스. -->
+    <div id="start-overlay">
+      <button id="start" aria-label="시작" autofocus>
+        <svg viewBox="0 0 100 100" width="140" height="140" aria-hidden="true">
+          <polygon points="34,22 82,50 34,78" fill="#fff" />
+        </svg>
+      </button>
+    </div>
+
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>
