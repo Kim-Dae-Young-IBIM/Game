@@ -2,7 +2,23 @@
   "permissions": {
     "deny": [
       "Read(./.env)",
-      "Read(./.env.*)"
+      "Read(./.env.*)",
+      "Edit(./.claude/hooks/**)",
+      "Write(./.claude/hooks/**)",
+      "Bash(git add -f *)",
+      "Bash(git add --force *)",
+      "Bash(git add * -f*)",
+      "Bash(git add * --force*)",
+      "Bash(git * add -f*)",
+      "Bash(git * add --force*)"
+    ],
+    "ask": [
+      "Bash(npm install *)",
+      "Bash(npm i *)",
+      "Bash(npm add *)",
+      "Bash(npm install-test *)",
+      "Bash(yarn add *)",
+      "Bash(pnpm add *)"
     ]
   },
   "hooks": {
@@ -13,7 +29,9 @@
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/pre-tool.mjs"],
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/pre-tool.mjs"
+            ],
             "timeout": 30
           }
         ]
@@ -26,7 +44,9 @@
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/post-tool.mjs"],
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/post-tool.mjs"
+            ],
             "timeout": 120
           }
         ]
@@ -38,7 +58,9 @@
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/stop-gate.mjs"],
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/stop-gate.mjs"
+            ],
             "timeout": 600
           }
         ]

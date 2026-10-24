@@ -1,10 +1,25 @@
 {
   "version": 3,
-  "packs": [],
-  "forbidden": [],
+  "packs": [
+    "dev"
+  ],
+  "forbidden": [
+    {
+      "pattern": "-----BEGIN [A-Z ]*PRIVATE KEY-----",
+      "flags": "",
+      "extensions": [],
+      "message": "개인키·인증서 내용을 저장소 파일에 쓰지 마세요. 인증서는 저장소 밖에 두거나 터널을 쓰세요."
+    },
+    {
+      "pattern": "(authtoken|secret|api[_-]?key|access[_-]?token|auth[_-]?token)[\"']?\\s*[:=]\\s*[\"']?[A-Za-z0-9_\\-]{20,}",
+      "flags": "i",
+      "extensions": [],
+      "message": "비밀값(ngrok authtoken, API 키 등)을 파일에 직접 쓰지 마세요. 환경 변수나 저장소 밖 설정(~/.config/ngrok)에 두세요."
+    }
+  ],
   "checks": [],
   "verify": {
-    "command": "",
+    "command": "npm run build && npm test",
     "localOnly": false,
     "maxRetries": 3
   }
