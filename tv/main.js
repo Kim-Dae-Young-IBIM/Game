@@ -5,7 +5,9 @@ import { Howl, Howler } from "howler";
 import { io } from "socket.io-client";
 import QRCode from "qrcode";
 import { EVENTS } from "../shared/protocol.js";
-import { DEFAULT_BPM, beatIndex, createBeatQueue } from "../shared/beat.js";
+import { DEFAULT_BPM, beatIndex, createBeatQueue, nearestBeat } from "../shared/beat.js";
+import { installErrorReporter } from "../shared/error-report.js";
+import { createTvDebug, isDebug } from "./debug.js";
 
 const BPM = DEFAULT_BPM;
 const STRONG_SHAKE = 0.7; // 이 세기 이상이면 드럼과 함께 야옹
@@ -14,6 +16,12 @@ const TOKEN_KEY = "band.tvToken"; // 재접속 시 같은 방을 넘겨받기 �
 
 // 테스트·디버그용 상태(Playwright가 읽는다)
 const state = (window.__band = { code: null, started: false, plays: 0, lastIntensity: 0, players: 0 });
+const DEBUG = isDebug(); // ?debug → 진단 화면
+
+// 소켓을 먼저 열어 두고 오류 보고기를 단다(무대 초기화 중 오류도 PC 터미널에서 보이게)
+const socket = io();
+let debug = { received() {}, error() {} };
+installErrorReporter(socket, "tv", message => debug.error(message));
 
 // ---------- 소리 ----------
 const sounds = {
@@ -127,7 +135,7 @@ class StageScene extends Phaser.Scene {
   }
 }
 
-new Phaser.Game({
+const game = new Phaser.Game({
   type: Phaser.AUTO,
   parent: "stage",
   width: 1920,
@@ -151,8 +159,13 @@ const beatQueue = createBeatQueue({ onBeat: perform, schedule: (fn, ms) => setTi
 
 function onPlay(msg) {
   const intensity = msg && typeof msg.intensity === "number" ? msg.intensity : 0.5;
-  if (!state.started) return perform(intensity); // 시작 전: 움직임만(소리 잠금 상태)
-  beatQueue(intensity, performance.now(), beatOrigin);
+  if (!state.started) {
+    debug.received(intensity, 0);
+    return perform(intensity); // 시작 전: 움직임만(소리 잠금 상태)
+  }
+  const now = performance.now();
+  debug.received(intensity, Math.round(nearestBeat(now, beatOrigin, BPM).delay));
+  beatQueue(intensity, now, beatOrigin);
 }
 
 // ---------- 방 코드·QR ----------
@@ -170,7 +183,8 @@ function showRoom(code, token) {
     // 저장소를 못 써도 동작에는 지장 없음
   }
   codeEl.textContent = code;
-  const url = location.origin + "/phone/?room=" + code;
+  // 진단 모드면 폰도 진단 모드로 열리게 한다
+  const url = location.origin + "/phone/?room=" + code + (DEBUG ? "&debug=1" : "");
   QRCode.toDataURL(url, { width: 360, margin: 1, errorCorrectionLevel: "M" })
     .then(src => {
       qrEl.src = src;
@@ -188,7 +202,6 @@ function showPlayers(count) {
   }
 }
 
-const socket = io();
 let tvToken = null;
 socket.on("connect", () => {
   let savedCode, savedToken;
@@ -229,3 +242,20 @@ document.addEventListener("keydown", e => {
   if (!state.started && (e.key === "Enter" || e.keyCode === 13)) start();
 });
 startBtn.focus();
+
+debug = createTvDebug({
+  enabled: DEBUG,
+  socket,
+  getInfo: () => ({
+    renderer: game.renderer ? (game.renderer.type === Phaser.WEBGL ? "WebGL" : "Canvas") : "-",
+    fps: game.loop ? Math.round(game.loop.actualFps) : 0,
+    audio:
+      Howler.usingWebAudio && Howler.ctx
+        ? "WebAudio " + Howler.ctx.state + " " + Howler.ctx.sampleRate + "Hz"
+        : "HTML5 Audio(WebAudio 없음)",
+    started: state.started,
+    code: state.code,
+    players: state.players,
+    plays: state.plays,
+  }),
+});

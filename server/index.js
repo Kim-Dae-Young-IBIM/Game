@@ -5,6 +5,7 @@ import { join, extname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Server } from "socket.io";
 import { createRoomManager } from "./rooms.js";
+import { formatClientLog } from "./client-log.js";
 import { EVENTS, clampIntensity } from "../shared/protocol.js";
 
 const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
@@ -68,7 +69,8 @@ function staticHandler(staticDir) {
 
 // staticDir가 없으면 소켓만 연다(개발 모드: 정적 파일은 vite가 서빙).
 // tvGraceMs: TV가 끊긴 뒤 방을 유지하는 시간. 그 안에 TV가 같은 코드로 돌아오면 폰은 그대로 이어진다.
-export function createGameServer({ staticDir, tvGraceMs = 60000 } = {}) {
+// log: 기기에서 온 오류·진단 기록을 찍을 함수(테스트에서는 바꿔 끼운다).
+export function createGameServer({ staticDir, tvGraceMs = 60000, log = console.log } = {}) {
   const httpServer = createHttpServer(
     staticDir
       ? staticHandler(staticDir)
@@ -83,6 +85,7 @@ export function createGameServer({ staticDir, tvGraceMs = 60000 } = {}) {
 
   const SHAKE_MIN_INTERVAL_MS = 100; // 폰 1대당 흔들림 전달 최소 간격(폭주 방지, 폰 디바운스는 150ms)
   const MAX_JOIN_FAILS = 20; // 소켓당 틀린 코드 허용 횟수(코드 무차별 대입 방지)
+  const LOGS_PER_SEC = 5; // 소켓당 기기 기록 출력 상한(터미널 폭주 방지)
 
   const playerCount = room => {
     if (room.tvId) io.to(room.tvId).emit(EVENTS.PLAYERS, { count: room.phones.size });
@@ -111,6 +114,30 @@ export function createGameServer({ staticDir, tvGraceMs = 60000 } = {}) {
   io.on("connection", socket => {
     let lastShakeAt = 0;
     let joinFails = 0;
+    let logWindowAt = 0;
+    let logsInWindow = 0;
+
+    socket.on(EVENTS.PING, ack => {
+      if (typeof ack === "function") ack(Date.now());
+    });
+
+    socket.on(EVENTS.CLIENT_LOG, payload => {
+      const now = Date.now();
+      if (now - logWindowAt >= 1000) {
+        logWindowAt = now;
+        logsInWindow = 0;
+      }
+      if (++logsInWindow > LOGS_PER_SEC) return;
+      const entry = formatClientLog(payload);
+      if (!entry) return;
+      const where = rooms.roomOf(socket.id);
+      const code = where && where.room ? " " + where.room.code : "";
+      try {
+        log(`[${entry.role}${code}] ${entry.kind}: ${entry.message}`);
+      } catch {
+        // 출력 실패는 무시
+      }
+    });
 
     socket.on(EVENTS.TV_CREATE, (payload, ack) => {
       if (typeof ack !== "function") return;

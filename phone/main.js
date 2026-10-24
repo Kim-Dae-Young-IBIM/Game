@@ -2,13 +2,22 @@
 // 순수 HTML/JS. 센서·Wake Lock·진동·전체화면은 있는 기기에서만 쓴다.
 import { io } from "socket.io-client";
 import { EVENTS, isValidRoomCode } from "../shared/protocol.js";
-import { createShakeDetector } from "../shared/shake.js";
+import { createShakeDetector, magnitude, SHAKE_THRESHOLD } from "../shared/shake.js";
+import { installErrorReporter } from "../shared/error-report.js";
+import { createPhoneDebug, isDebug } from "./debug.js";
 
 const TAP_INTENSITY = 0.7; // 센서가 없을 때 탭 한 번의 세기
 const NO_SENSOR_MS = 2500; // 이 시간 동안 센서 값이 없으면 탭으로 대신한다
 
 // 테스트·디버그용 상태(Playwright가 읽는다)
-const state = (window.__phone = { code: null, joined: false, shakes: 0, tapFallback: false });
+const state = (window.__phone = {
+  code: null,
+  joined: false,
+  shakes: 0,
+  tapFallback: false,
+  permission: "-", // 센서 권한 결과(진단 화면 표시용)
+  wakeLock: "-", // 화면 꺼짐 방지 상태(진단 화면 표시용)
+});
 
 const $ = id => document.getElementById(id);
 const joinScreen = $("join");
@@ -33,6 +42,8 @@ codeInput.addEventListener("keydown", e => {
 
 // ---------- 소켓 ----------
 const socket = io();
+let debug = { sample() {}, shake() {}, error() {} };
+installErrorReporter(socket, "phone", message => debug.error(message));
 
 function join(code) {
   return new Promise(resolve => {
@@ -72,13 +83,22 @@ function enterFullscreen() {
 
 let wakeLock = null;
 function requestWakeLock() {
-  if (!("wakeLock" in navigator)) return;
+  if (!("wakeLock" in navigator)) {
+    state.wakeLock = "미지원";
+    return;
+  }
   navigator.wakeLock
     .request("screen")
     .then(lock => {
       wakeLock = lock;
+      state.wakeLock = "켜짐";
+      lock.addEventListener("release", () => {
+        state.wakeLock = "꺼짐";
+      });
     })
-    .catch(() => {});
+    .catch(() => {
+      state.wakeLock = "실패";
+    });
 }
 document.addEventListener("visibilitychange", () => {
   // 화면이 다시 보이면 Wake Lock은 풀려 있으므로 다시 요청
@@ -109,24 +129,40 @@ function guardBack() {
 // ---------- 센서 ----------
 // iOS 13+(및 최신 Chromium)는 사용자 탭 안에서 requestPermission()을 "먼저" 호출해야 한다(await 전에).
 function requestMotionPermission() {
-  if (typeof DeviceMotionEvent === "undefined") return Promise.resolve(false);
+  if (typeof DeviceMotionEvent === "undefined") {
+    state.permission = "센서 없음";
+    return Promise.resolve(false);
+  }
   if (typeof DeviceMotionEvent.requestPermission === "function") {
     return DeviceMotionEvent.requestPermission()
-      .then(s => s === "granted")
-      .catch(() => false);
+      .then(s => {
+        state.permission = s;
+        return s === "granted";
+      })
+      .catch(e => {
+        state.permission = "오류: " + (e && e.name ? e.name : e);
+        return false;
+      });
   }
+  state.permission = "필요 없음";
   return Promise.resolve(true);
 }
 
-const detect = createShakeDetector();
+let threshold = SHAKE_THRESHOLD; // 진단 화면에서만 바꿀 수 있다
+let detect = createShakeDetector({ threshold });
 let motionSeen = false;
 
 function onMotion(e) {
   const a = e.accelerationIncludingGravity;
   if (!a || a.x === null) return;
   motionSeen = true;
-  const hit = detect(a, performance.now());
-  if (hit) shake(hit.intensity);
+  const now = performance.now();
+  debug.sample(magnitude(a), now);
+  const hit = detect(a, now);
+  if (hit) {
+    debug.shake(hit.intensity, now);
+    shake(hit.intensity);
+  }
 }
 
 function shake(intensity) {
@@ -200,4 +236,16 @@ goBtn.addEventListener("click", () => {
       if (!motionSeen) enableTapFallback();
     }, NO_SENSOR_MS);
   });
+});
+
+// ---------- 진단 화면(?debug) ----------
+debug = createPhoneDebug({
+  enabled: isDebug(),
+  socket,
+  state,
+  getThreshold: () => threshold,
+  setThreshold: t => {
+    threshold = t;
+    detect = createShakeDetector({ threshold });
+  },
 });

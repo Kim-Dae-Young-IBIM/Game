@@ -20,13 +20,15 @@
 - `npm test`: 단위·통합 테스트(`node --test`). 빌드 후 실행하면 `dist` 문법 호환 검사도 한다.
 - `npm run tunnel`: `ngrok http 3000`(HTTPS 주소 발급, 센서 권한에 필요). ngrok은 별도 설치.
 - `npm run sounds`: `assets/sounds/*.wav` 합성음 다시 생성.
+- 진단 모드: TV 주소에 `?debug`(예: `/tv/?debug`) → TV·폰(QR에 자동 포함)에 진단 화면, 5초마다 요약이 서버 터미널에 `[tv 1234] report: …` 형태로 찍힌다. 기기 오류는 진단 모드가 아니어도 항상 터미널에 `error:`로 찍힌다.
 - 완료 검증: `npm run build && npm test`(Stop 훅이 자동 실행).
 
 ## 3. 폴더 구조
-- `server/`: `index.js` HTTP 정적 서빙 + Socket.IO 중계, `rooms.js` 방 코드 관리(순수 로직).
+- `server/`: `index.js` HTTP 정적 서빙 + Socket.IO 중계, `rooms.js` 방 코드 관리(순수 로직), `client-log.js` 기기 기록 정리.
 - `tv/`: TV 페이지. `main.js` Phaser 무대, Howler 소리, 박자 시계, QR.
 - `phone/`: 폰 컨트롤러 페이지. 코드 입력, 센서 권한, 흔들림 → 전송, 화면 보호.
-- `shared/`: 서버·TV·폰 공용 순수 로직. `shake.js` 흔들림 판정, `beat.js` 박자 보정, `protocol.js` 이벤트 이름.
+- `shared/`: 서버·TV·폰 공용 순수 로직. `shake.js` 흔들림 판정, `beat.js` 박자 보정, `protocol.js` 이벤트 이름, `diag.js` 진단 계산. (`error-report.js`만 브라우저 전용)
+- `tv/debug.js`, `phone/debug.js`: `?debug` 진단 화면(부모·개발용이라 글자 허용).
 - `assets/`: 정적 자원(빌드 시 루트로 복사). `animals/*.svg`, `sounds/*.wav`(합성음, 라이선스 문제 없음).
 - `scripts/`: `dev.mjs` 개발 서버 동시 실행, `gen-sounds.mjs` 효과음 합성.
 - `tests/`: `node --test` 테스트. `docs/`: 실기기 체크리스트, 하네스 기록.
