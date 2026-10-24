@@ -7,6 +7,8 @@ export const EVENTS = {
   PLAY: "tv:play", // 서버 → TV {intensity, phoneId}
   PLAYERS: "tv:players", // 서버 → TV {count}
   ROOM_CLOSED: "room:closed", // 서버 → 폰 (TV가 돌아오지 않음)
+  PING: "debug:ping", // TV·폰 → 서버 (ack: 서버 시각) — 왕복 지연 측정
+  CLIENT_LOG: "client:log", // TV·폰 → 서버 {role, kind, message} — 오류·진단 기록을 서버 기록(Render Logs)에 출력
 };
 
 export const ROOM_CODE_PATTERN = /^[1-9][0-9]{3}$/; // 4자리 숫자, 0으로 시작하지 않음

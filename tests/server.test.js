@@ -11,10 +11,11 @@ import { EVENTS } from "../shared/protocol.js";
 
 let server;
 let url;
+const logs = [];
 const clients = [];
 
 before(async () => {
-  server = createGameServer({ tvGraceMs: 1000 });
+  server = createGameServer({ tvGraceMs: 1000, log: m => logs.push(m) });
   const port = await server.listen(0);
   url = `http://localhost:${port}`;
 });
@@ -197,6 +198,59 @@ test("폰 1대의 흔들림 폭주는 서버에서 100ms 간격으로 줄인다"
   assert.equal(got, 1);
 });
 
+test("같은 IP에서 틀린 코드를 계속 넣으면 다시 접속해도 막힌다", async () => {
+  const web = createGameServer({ ipJoinFails: { max: 3, windowMs: 60000 } });
+  const port = await web.listen(0);
+  const conn = () =>
+    new Promise(res => {
+      const c = connect(`http://localhost:${port}`, { transports: ["websocket"], reconnection: false, forceNew: true });
+      clients.push(c);
+      c.on("connect", () => res(c));
+    });
+  try {
+    const tv = await conn();
+    const { code } = await ask(tv, EVENTS.TV_CREATE, {});
+    for (let i = 0; i < 3; i++) {
+      const p = await conn(); // 매번 새 소켓
+      assert.deepEqual(await ask(p, EVENTS.PHONE_JOIN, { code: "9999" === code ? "9998" : "9999" }), { ok: false });
+      p.close();
+    }
+    const late = await conn();
+    assert.deepEqual(await ask(late, EVENTS.PHONE_JOIN, { code }), { ok: false }, "맞는 코드여도 잠시 막힘");
+  } finally {
+    await web.close();
+  }
+});
+
+// ---------- 진단 ----------
+test("왕복 지연 측정용 ping에 서버 시각으로 답한다", async () => {
+  const c = await client();
+  const t = await new Promise(res => c.emit(EVENTS.PING, res));
+  assert.ok(typeof t === "number" && Math.abs(Date.now() - t) < 5000);
+});
+
+test("기기 오류·진단 기록이 방 코드와 함께 서버 터미널에 찍힌다", async () => {
+  const tv = await client();
+  const { code } = await ask(tv, EVENTS.TV_CREATE, {});
+  const before = logs.length;
+  tv.emit(EVENTS.CLIENT_LOG, { role: "tv", kind: "error", message: "TypeError: x is undefined" });
+  await until(() => logs.length > before);
+  assert.equal(logs[logs.length - 1], `[tv ${code}] error: TypeError: x is undefined`);
+});
+
+test("기기 기록은 소켓당 초당 5줄까지, 이상한 값은 무시", async () => {
+  const junk = await client();
+  const c = await client();
+  const before = logs.length;
+  junk.emit(EVENTS.CLIENT_LOG, "not an object");
+  junk.emit(EVENTS.CLIENT_LOG, null);
+  junk.emit(EVENTS.CLIENT_LOG, { role: "tv", message: "" });
+  for (let i = 0; i < 30; i++) c.emit(EVENTS.CLIENT_LOG, { role: "phone", kind: "info", message: "m" + i });
+  await new Promise(r => setTimeout(r, 200));
+  assert.equal(logs.length - before, 5);
+  assert.ok(logs.slice(before).every(l => l.startsWith("[phone] info: m")));
+});
+
 // ---------- 정적 파일 서빙 ----------
 test("정적 서빙: 이상한 경로로 서버가 죽지 않고, 폴더 밖 파일을 주지 않는다", async () => {
   const dir = mkdtempSync(join(tmpdir(), "band-static-"));
@@ -222,6 +276,7 @@ test("정적 서빙: 이상한 경로로 서버가 죽지 않고, 폴더 밖 파
     assert.deepEqual(await get("/"), { status: 302, location: "/tv/" });
     assert.deepEqual(await get("/p?room=1234"), { status: 302, location: "/phone/?room=1234" });
     assert.equal((await get("/tv/")).status, 200);
+    assert.equal((await get("/healthz")).status, 200);
     assert.equal((await get("/tv/")).status, 200, "위 요청들 뒤에도 서버가 살아 있다");
   } finally {
     await web.close();
