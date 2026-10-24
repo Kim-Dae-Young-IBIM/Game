@@ -198,7 +198,146 @@ function bgm() {
   return normalize(out, 0.8);
 }
 
-const XYLO = { c5: 523.25, d5: 587.33, e5: 659.25, g5: 783.99, a5: 880.0, c6: 1046.5 };
+// 곰 큰북: 드럼보다 낮고 길게 울리는 "둥"
+function bassdrum() {
+  const out = new Float32Array(len(0.8));
+  const rnd = noise(41);
+  let phase = 0;
+  for (let i = 0; i < out.length; i++) {
+    const t = i / RATE;
+    phase += (TAU * (42 + 70 * Math.exp(-t * 12))) / RATE;
+    out[i] = Math.sin(phase) * Math.exp(-t * 4) + 0.25 * Math.sin(phase * 2) * Math.exp(-t * 9) + rnd() * Math.exp(-t * 90) * 0.35;
+  }
+  return normalize(out);
+}
+
+// 토끼 트라이앵글: 높은 금속 배음이 길게 "띵"
+function triangle() {
+  const out = new Float32Array(len(1.4));
+  const partials = [
+    [1250, 1],
+    [3440, 0.6],
+    [5170, 0.45],
+    [7820, 0.3],
+  ];
+  for (let i = 0; i < out.length; i++) {
+    const t = i / RATE;
+    let v = 0;
+    for (const [f, a] of partials) v += a * Math.sin(TAU * f * t) * Math.exp(-t * (2.2 + f / 4000));
+    out[i] = v * Math.min(1, t / 0.002);
+  }
+  return normalize(out, 0.75);
+}
+
+// 오리 장난감 나팔 한 음: 톱니파 비슷한 배음 + 약간 올라가며 시작, "빠-"
+function horn(freq) {
+  const out = new Float32Array(len(0.42));
+  let phase = 0;
+  for (let i = 0; i < out.length; i++) {
+    const t = i / RATE;
+    const f = freq * (1 - 0.06 * Math.exp(-t * 30)) * (1 + 0.006 * Math.sin(TAU * 6 * t));
+    phase += (TAU * f) / RATE;
+    let v = 0;
+    for (let k = 1; k <= 8; k++) v += (Math.sin(k * phase) / k) * Math.exp(-((k * f - 1400) ** 2) / (2 * 900 ** 2) + 0.2);
+    const env = Math.min(1, t / 0.02) * Math.min(1, (0.42 - t) / 0.08);
+    out[i] = v * env;
+  }
+  return normalize(out, 0.8);
+}
+
+// 고양이 핸드벨 한 음: 종처럼 어긋난 배음, 길게 울림
+function bell(freq) {
+  const out = new Float32Array(len(1.1));
+  const ratios = [
+    [1, 1, 3],
+    [2.0, 0.5, 4],
+    [2.76, 0.35, 6],
+    [5.4, 0.2, 9],
+  ];
+  for (let i = 0; i < out.length; i++) {
+    const t = i / RATE;
+    let v = 0;
+    for (const [r, a, d] of ratios) v += a * Math.sin(TAU * freq * r * t) * Math.exp(-t * d);
+    out[i] = v * Math.min(1, t / 0.002);
+  }
+  return normalize(out, 0.8);
+}
+
+// 곰 "어흥": 낮은 으르렁(거친 잡음 섞인 톱니파), 올라갔다 내려옴
+function roar() {
+  const dur = 0.85;
+  const out = new Float32Array(len(dur));
+  const rnd = noise(53);
+  let phase = 0;
+  for (let i = 0; i < out.length; i++) {
+    const t = i / RATE;
+    const p = t / dur;
+    const f = 95 + 70 * Math.sin(Math.PI * Math.min(1, p * 1.3));
+    phase += (TAU * f * (1 + 0.08 * rnd())) / RATE;
+    let v = 0;
+    for (let k = 1; k <= 14; k++) v += (Math.sin(k * phase) / k) * Math.exp(-((k * f - 700) ** 2) / (2 * 500 ** 2));
+    const env = Math.min(1, t / 0.06) * Math.min(1, (dur - t) / 0.2) * (0.8 + 0.2 * Math.sin(TAU * 18 * t));
+    out[i] = (v + rnd() * 0.15) * env;
+  }
+  return normalize(out, 0.85);
+}
+
+// 토끼 "뿅": 빠르게 올라가는 통통 튀는 소리
+function boing() {
+  const dur = 0.4;
+  const out = new Float32Array(len(dur));
+  let phase = 0;
+  for (let i = 0; i < out.length; i++) {
+    const t = i / RATE;
+    const f = 260 + 900 * (1 - Math.exp(-t * 14)) + 40 * Math.sin(TAU * 22 * t);
+    phase += (TAU * f) / RATE;
+    out[i] = (Math.sin(phase) + 0.3 * Math.sin(2 * phase)) * Math.min(1, t / 0.005) * Math.exp(-t * 6);
+  }
+  return normalize(out, 0.85);
+}
+
+// 오리 "꽥꽥": 펭귄보다 납작하고 콧소리가 센 소리, 두 번
+function quack() {
+  const out = new Float32Array(len(0.5));
+  for (const [delay, pitch] of [
+    [0, 1],
+    [0.22, 1.08],
+  ]) {
+    const start = len(delay);
+    const dur = 0.17;
+    let phase = 0;
+    for (let i = start; i < Math.min(out.length, start + len(dur)); i++) {
+      const t = (i - start) / RATE; // 이 꽥 안에서의 시각(파일 처음 기준이 아님)
+      const f = (330 - 60 * (t / dur)) * pitch;
+      phase += (TAU * f) / RATE;
+      let v = 0;
+      for (let k = 1; k <= 16; k++) v += Math.sin(k * phase) * (Math.exp(-((k * f - 1700) ** 2) / (2 * 350 ** 2)) + 0.2 / k);
+      out[i] += v * Math.min(1, t / 0.008) * Math.min(1, (dur - t) / 0.04);
+    }
+  }
+  return normalize(out, 0.85);
+}
+
+// 고양이 "야옹": 올라갔다 내려오는 음높이 + 비브라토, "이-야-옹"
+function meow() {
+  const dur = 0.55;
+  const out = new Float32Array(len(dur));
+  let phase = 0;
+  for (let i = 0; i < out.length; i++) {
+    const t = i / RATE;
+    const p = t / dur;
+    const contour = p < 0.35 ? 520 + 380 * (p / 0.35) : 900 - 420 * ((p - 0.35) / 0.65);
+    const f = contour * (1 + 0.025 * Math.sin(TAU * 6 * t));
+    phase += (TAU * f) / RATE;
+    const bright = p < 0.4 ? 0.6 : 0.6 - 0.45 * ((p - 0.4) / 0.6);
+    const tone = Math.sin(phase) + bright * Math.sin(2 * phase) + bright * 0.5 * Math.sin(3 * phase) + 0.15 * Math.sin(4 * phase);
+    out[i] = tone * Math.min(1, t / 0.04) * Math.min(1, (dur - t) / 0.12);
+  }
+  return normalize(out, 0.85);
+}
+
+// 멜로디 악기 음(도·레·미·솔·라·높은 도). 파일 이름은 `${악기}-${번호}.wav`
+const SCALE = [523.25, 587.33, 659.25, 783.99, 880.0, 1046.5];
 
 mkdirSync(outDir, { recursive: true });
 for (const f of readdirSync(outDir)) if (f.endsWith(".wav")) unlinkSync(outDir + f); // 예전 파일 정리
@@ -206,10 +345,20 @@ const files = {
   "drum.wav": drum(),
   "tambourine.wav": tambourine(),
   "maracas.wav": maracas(),
+  "bassdrum.wav": bassdrum(),
+  "triangle.wav": triangle(),
   "squawk.wav": squawk(),
+  "roar.wav": roar(),
+  "boing.wav": boing(),
+  "quack.wav": quack(),
+  "meow.wav": meow(),
   "bgm.wav": bgm(),
 };
-for (const [name, f] of Object.entries(XYLO)) files[`xylo-${name}.wav`] = xylophone(f);
+SCALE.forEach((f, i) => {
+  files[`xylophone-${i}.wav`] = xylophone(f);
+  files[`horn-${i}.wav`] = horn(f / 2); // 나팔은 한 옥타브 낮게
+  files[`bell-${i}.wav`] = bell(f);
+});
 for (const [name, samples] of Object.entries(files)) {
   writeFileSync(outDir + name, wav(samples));
   console.log("wrote", name);

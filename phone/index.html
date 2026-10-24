@@ -38,16 +38,19 @@
     <!-- 2) 연주: 내 펭귄을 크게. 흔들면 TV에서 연주, 아래 버튼은 꽥·말하기 -->
     <main id="play" class="screen hidden">
       <img id="animal" src="/animals/penguin-1.svg" alt="" draggable="false" />
+      <!-- ◀ ▶ 다른 동물로 바꾸기(다른 폰이 쓰는 동물은 건너뜀) -->
+      <div id="chooser">
+        <button id="prev" class="arrow" aria-label="이전 동물">
+          <svg viewBox="0 0 100 100" aria-hidden="true"><path d="M62 22 L34 50 L62 78" fill="none" stroke="#263347" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" /></svg>
+        </button>
+        <button id="next" class="arrow" aria-label="다음 동물">
+          <svg viewBox="0 0 100 100" aria-hidden="true"><path d="M38 22 L66 50 L38 78" fill="none" stroke="#263347" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" /></svg>
+        </button>
+      </div>
       <div id="controls">
-        <!-- 펭귄 효과음: 누르면 TV에서 "꽥꽥" -->
-        <button id="squawk" class="big-btn round" aria-label="꽥">
-          <svg viewBox="0 0 100 100" aria-hidden="true">
-            <ellipse cx="50" cy="52" rx="34" ry="30" fill="#f8f9fb" />
-            <ellipse cx="38" cy="46" rx="5" ry="6" fill="#1d1d1d" />
-            <ellipse cx="62" cy="46" rx="5" ry="6" fill="#1d1d1d" />
-            <path d="M38 58 Q50 50 62 58 Q50 80 38 58 Z" fill="#ff9f1c" />
-            <path d="M84 20 l6 -8 M90 32 l10 -3 M76 12 l1 -10" stroke="#fff" stroke-width="5" stroke-linecap="round" />
-          </svg>
+        <!-- 특별 버튼: 누르면 TV에서 내 캐릭터 소리(꽥·어흥·뿅·야옹) -->
+        <button id="squawk" class="big-btn round" aria-label="특별 소리">
+          <img id="effect-face" src="/animals/face-penguin-1.svg" alt="" draggable="false" />
         </button>
         <!-- 누르고 말하기: 누른 채 말하고 떼면 TV에서 펭귄 목소리로 -->
         <button id="mic" class="big-btn round" aria-label="말하기">

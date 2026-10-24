@@ -8,7 +8,6 @@ import { createRoomManager } from "./rooms.js";
 import { formatClientLog } from "./client-log.js";
 import { createFailLimiter, clientIp } from "./limits.js";
 import { EVENTS, clampIntensity } from "../shared/protocol.js";
-import { PENGUINS } from "../shared/band.js";
 import { isValidVoice } from "../shared/pcm.js";
 
 const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
@@ -95,16 +94,23 @@ export function createGameServer({ staticDir, tvGraceMs = 60000, log = console.l
   // 폰은 보낸 시각, 서버는 받은 시각 기준이라 네트워크 흔들림만큼 서버 간격을 조금 짧게 둔다
   const EFFECT_MIN_INTERVAL_MS = 800; // 펭귄 효과음 버튼(폰은 1초에 1번)
   const VOICE_MIN_INTERVAL_MS = 1500; // 목소리(폰은 2초에 1번)
+  const CHOOSE_MIN_INTERVAL_MS = 200; // ◀ ▶ 연타(폰은 0.3초에 1번)
 
   const playerCount = room => {
-    if (room.tvId) io.to(room.tvId).emit(EVENTS.PLAYERS, { count: room.phones.size, slots: rooms.slotsOf(room) });
+    if (!room.tvId) return;
+    io.to(room.tvId).emit(EVENTS.PLAYERS, {
+      count: room.phones.size,
+      slots: rooms.slotsOf(room),
+      players: rooms.playersOf(room),
+    });
   };
 
-  // 입장한 폰이고 TV가 있을 때만 { room, slot }
+  // 입장한 폰이고 TV가 있을 때만 { room, slot, character }
   const phoneInRoom = socketId => {
     const entry = rooms.roomOf(socketId);
     if (!entry || entry.role !== "phone" || !entry.room || !entry.room.tvId) return null;
-    return { room: entry.room, slot: entry.room.phones.get(socketId) };
+    const me = rooms.phoneOf(entry.room, socketId);
+    return me ? { room: entry.room, slot: me.slot, character: me.character } : null;
   };
 
   function scheduleClose(room) {
@@ -131,6 +137,7 @@ export function createGameServer({ staticDir, tvGraceMs = 60000, log = console.l
     let lastShakeAt = 0;
     let lastEffectAt = 0;
     let lastVoiceAt = 0;
+    let lastChooseAt = 0;
     let joinFails = 0;
     const ip = clientIp(socket.handshake);
     let logWindowAt = 0;
@@ -190,14 +197,14 @@ export function createGameServer({ staticDir, tvGraceMs = 60000, log = console.l
       if (!(current && current.role === "phone" && current.room && current.room.code === code)) {
         leave(socket.id);
       }
-      const room = rooms.joinRoom(code, socket.id, payload && payload.slot);
+      const room = rooms.joinRoom(code, socket.id, payload && payload.slot, payload && payload.character);
       if (!room) {
         joinFails++;
         ipFails.fail(ip);
         return ack({ ok: false });
       }
-      const slot = room.phones.get(socket.id);
-      ack({ ok: true, slot, instrument: PENGUINS[slot].instrument });
+      const me = rooms.phoneOf(room, socket.id);
+      ack({ ok: true, slot: me.slot, character: me.character });
       playerCount(room);
     });
 
@@ -210,8 +217,24 @@ export function createGameServer({ staticDir, tvGraceMs = 60000, log = console.l
       io.to(p.room.tvId).emit(EVENTS.PLAY, {
         intensity: clampIntensity(payload && payload.intensity),
         slot: p.slot,
+        character: p.character,
         phoneId: socket.id,
       });
+    });
+
+    // ◀ ▶ 캐릭터 고르기: 다른 폰이 안 쓰는 다음 캐릭터로, TV에 새 목록을 알린다
+    socket.on(EVENTS.CHOOSE, (payload, ack) => {
+      if (typeof ack !== "function") return;
+      const p = phoneInRoom(socket.id);
+      const dir = payload && payload.dir;
+      const now = Date.now();
+      if (!p || (dir !== 1 && dir !== -1) || now - lastChooseAt < CHOOSE_MIN_INTERVAL_MS) {
+        return ack({ character: p ? p.character : null });
+      }
+      lastChooseAt = now;
+      const character = rooms.chooseCharacter(socket.id, dir);
+      ack({ character });
+      playerCount(p.room);
     });
 
     // 펭귄 효과음 버튼(내용 없음, 종류는 서버가 정한다)
@@ -221,7 +244,7 @@ export function createGameServer({ staticDir, tvGraceMs = 60000, log = console.l
       const now = Date.now();
       if (now - lastEffectAt < EFFECT_MIN_INTERVAL_MS) return;
       lastEffectAt = now;
-      io.to(p.room.tvId).emit(EVENTS.EFFECT, { slot: p.slot, type: "squawk" });
+      io.to(p.room.tvId).emit(EVENTS.EFFECT, { slot: p.slot, character: p.character });
     });
 
     // 누르고 말하기: 16bit PCM을 검사해 TV로 그대로 전달
@@ -231,7 +254,7 @@ export function createGameServer({ staticDir, tvGraceMs = 60000, log = console.l
       const now = Date.now();
       if (now - lastVoiceAt < VOICE_MIN_INTERVAL_MS) return;
       lastVoiceAt = now;
-      io.to(p.room.tvId).emit(EVENTS.VOICE, { slot: p.slot, pcm: payload.pcm, rate: payload.rate });
+      io.to(p.room.tvId).emit(EVENTS.VOICE, { slot: p.slot, character: p.character, pcm: payload.pcm, rate: payload.rate });
     });
 
     socket.on("disconnect", () => leave(socket.id));

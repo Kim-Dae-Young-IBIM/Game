@@ -104,7 +104,7 @@ body {
   flex: 1 1 auto;
   min-height: 0;
   width: 92vmin;
-  max-height: 64vh;
+  max-height: 52vh;
   margin-top: 2vh;
   object-fit: contain;
   pointer-events: auto;
@@ -121,6 +121,38 @@ body {
   width: 150px;
   height: 150px;
   touch-action: none; /* 길게 눌러도 확대·선택·메뉴가 뜨지 않게 */
+}
+/* ◀ ▶ 동물 바꾸기: 그림과 버튼 사이 한 줄(아이 대상: 120px) */
+#chooser {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0 16px;
+  box-sizing: border-box;
+}
+.arrow {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  border: 6px solid #fff;
+  background: rgba(255, 255, 255, 0.55);
+  padding: 18px;
+  touch-action: none;
+  box-shadow: 0 6px 0 rgba(38, 51, 71, 0.25);
+}
+.arrow svg {
+  width: 100%;
+  height: 100%;
+}
+.arrow:active {
+  transform: scale(0.92);
+  background: rgba(255, 255, 255, 0.85);
+}
+#squawk img {
+  width: 92%;
+  height: 92%;
+  border-radius: 50%;
+  pointer-events: none;
 }
 #squawk {
   background: #263347;
