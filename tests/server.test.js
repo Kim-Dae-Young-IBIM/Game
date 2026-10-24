@@ -198,6 +198,30 @@ test("폰 1대의 흔들림 폭주는 서버에서 100ms 간격으로 줄인다"
   assert.equal(got, 1);
 });
 
+test("같은 IP에서 틀린 코드를 계속 넣으면 다시 접속해도 막힌다", async () => {
+  const web = createGameServer({ ipJoinFails: { max: 3, windowMs: 60000 } });
+  const port = await web.listen(0);
+  const conn = () =>
+    new Promise(res => {
+      const c = connect(`http://localhost:${port}`, { transports: ["websocket"], reconnection: false, forceNew: true });
+      clients.push(c);
+      c.on("connect", () => res(c));
+    });
+  try {
+    const tv = await conn();
+    const { code } = await ask(tv, EVENTS.TV_CREATE, {});
+    for (let i = 0; i < 3; i++) {
+      const p = await conn(); // 매번 새 소켓
+      assert.deepEqual(await ask(p, EVENTS.PHONE_JOIN, { code: "9999" === code ? "9998" : "9999" }), { ok: false });
+      p.close();
+    }
+    const late = await conn();
+    assert.deepEqual(await ask(late, EVENTS.PHONE_JOIN, { code }), { ok: false }, "맞는 코드여도 잠시 막힘");
+  } finally {
+    await web.close();
+  }
+});
+
 // ---------- 진단 ----------
 test("왕복 지연 측정용 ping에 서버 시각으로 답한다", async () => {
   const c = await client();
@@ -252,6 +276,7 @@ test("정적 서빙: 이상한 경로로 서버가 죽지 않고, 폴더 밖 파
     assert.deepEqual(await get("/"), { status: 302, location: "/tv/" });
     assert.deepEqual(await get("/p?room=1234"), { status: 302, location: "/phone/?room=1234" });
     assert.equal((await get("/tv/")).status, 200);
+    assert.equal((await get("/healthz")).status, 200);
     assert.equal((await get("/tv/")).status, 200, "위 요청들 뒤에도 서버가 살아 있다");
   } finally {
     await web.close();

@@ -1,0 +1,16 @@
+# Render 배포 설정(Blueprint). 저장소를 Render에 연결하면 이 파일대로 서버가 만들어진다.
+# main 브랜치에 병합될 때마다 자동으로 다시 배포된다.
+services:
+  - type: web
+    name: shaky-animal-band
+    runtime: node
+    plan: free
+    region: singapore # 한국에서 가장 가까운 지역
+    branch: main
+    autoDeploy: true
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: "22"

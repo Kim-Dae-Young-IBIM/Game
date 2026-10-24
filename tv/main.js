@@ -18,7 +18,7 @@ const TOKEN_KEY = "band.tvToken"; // 재접속 시 같은 방을 넘겨받기 �
 const state = (window.__band = { code: null, started: false, plays: 0, lastIntensity: 0, players: 0 });
 const DEBUG = isDebug(); // ?debug → 진단 화면
 
-// 소켓을 먼저 열어 두고 오류 보고기를 단다(무대 초기화 중 오류도 PC 터미널에서 보이게)
+// 소켓을 먼저 열어 두고 오류 보고기를 단다(무대 초기화 중 오류도 서버 기록에서 보이게)
 const socket = io();
 let debug = { received() {}, error() {} };
 installErrorReporter(socket, "tv", message => debug.error(message));

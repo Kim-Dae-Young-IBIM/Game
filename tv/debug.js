@@ -1,5 +1,5 @@
 // TV 진단 화면: 주소에 ?debug 를 붙이면 왼쪽 아래에 표시된다(아이용 화면이 아니라 부모·개발용).
-// 5초마다 같은 내용을 서버로 보내 PC 터미널에도 찍는다. debug가 아니면 아무것도 하지 않는다.
+// 5초마다 같은 내용을 서버로 보내 서버 기록(Render Logs)에도 찍는다. debug가 아니면 아무것도 하지 않는다.
 import { EVENTS } from "../shared/protocol.js";
 import { shortBrowser } from "../shared/diag.js";
 

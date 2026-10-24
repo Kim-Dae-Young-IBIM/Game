@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { Server } from "socket.io";
 import { createRoomManager } from "./rooms.js";
 import { formatClientLog } from "./client-log.js";
+import { createFailLimiter, clientIp } from "./limits.js";
 import { EVENTS, clampIntensity } from "../shared/protocol.js";
 
 const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
@@ -41,6 +42,7 @@ function staticHandler(staticDir) {
     } catch {
       return send(res, 400);
     }
+    if (url.pathname === "/healthz") return send(res, 200, { "Content-Type": "text/plain" }, "ok"); // Render 상태 확인
     if (REDIRECTS[url.pathname]) return send(res, 302, { Location: REDIRECTS[url.pathname] + url.search });
     if (path.includes("\0")) return send(res, 400);
     if (path.endsWith("/")) path += "index.html";
@@ -70,7 +72,7 @@ function staticHandler(staticDir) {
 // staticDir가 없으면 소켓만 연다(개발 모드: 정적 파일은 vite가 서빙).
 // tvGraceMs: TV가 끊긴 뒤 방을 유지하는 시간. 그 안에 TV가 같은 코드로 돌아오면 폰은 그대로 이어진다.
 // log: 기기에서 온 오류·진단 기록을 찍을 함수(테스트에서는 바꿔 끼운다).
-export function createGameServer({ staticDir, tvGraceMs = 60000, log = console.log } = {}) {
+export function createGameServer({ staticDir, tvGraceMs = 60000, log = console.log, ipJoinFails = {} } = {}) {
   const httpServer = createHttpServer(
     staticDir
       ? staticHandler(staticDir)
@@ -85,6 +87,7 @@ export function createGameServer({ staticDir, tvGraceMs = 60000, log = console.l
 
   const SHAKE_MIN_INTERVAL_MS = 100; // 폰 1대당 흔들림 전달 최소 간격(폭주 방지, 폰 디바운스는 150ms)
   const MAX_JOIN_FAILS = 20; // 소켓당 틀린 코드 허용 횟수(코드 무차별 대입 방지)
+  const ipFails = createFailLimiter(ipJoinFails); // IP당 틀린 코드 제한(다시 접속해도 유지)
   const LOGS_PER_SEC = 5; // 소켓당 기기 기록 출력 상한(터미널 폭주 방지)
 
   const playerCount = room => {
@@ -114,6 +117,7 @@ export function createGameServer({ staticDir, tvGraceMs = 60000, log = console.l
   io.on("connection", socket => {
     let lastShakeAt = 0;
     let joinFails = 0;
+    const ip = clientIp(socket.handshake);
     let logWindowAt = 0;
     let logsInWindow = 0;
 
@@ -165,7 +169,7 @@ export function createGameServer({ staticDir, tvGraceMs = 60000, log = console.l
 
     socket.on(EVENTS.PHONE_JOIN, (payload, ack) => {
       if (typeof ack !== "function") return;
-      if (joinFails >= MAX_JOIN_FAILS) return ack({ ok: false });
+      if (joinFails >= MAX_JOIN_FAILS || ipFails.blocked(ip)) return ack({ ok: false });
       const code = payload && payload.code;
       const current = rooms.roomOf(socket.id);
       if (!(current && current.role === "phone" && current.room && current.room.code === code)) {
@@ -174,6 +178,7 @@ export function createGameServer({ staticDir, tvGraceMs = 60000, log = console.l
       const room = rooms.joinRoom(code, socket.id);
       if (!room) {
         joinFails++;
+        ipFails.fail(ip);
         return ack({ ok: false });
       }
       ack({ ok: true, animal: room.animal });

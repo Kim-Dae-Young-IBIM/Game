@@ -9,6 +9,7 @@
 - TV: LG 75QNED90(webOS 6.5 내장 브라우저, Chromium 79 수준) → 무대·소리 재생.
 - 컨트롤러: Galaxy S26(Chrome/삼성 인터넷), iPhone 16 Pro(Safari). TV 화면의 QR 또는 4자리 방 코드로 접속.
 - 구조: Node.js + Socket.IO 서버가 방 코드로 TV 1대 + 폰 N대를 묶는다. TV는 Phaser 3 + Howler.js, 폰은 순수 HTML/JS(DeviceMotionEvent).
+- 운영: 집에 PC가 없어 서버는 **Render 무료 플랜**(`render.yaml`, 싱가포르)에서 돈다. `main`에 병합하면 자동 배포. HTTPS는 Render가 제공. 15분 미사용 시 잠들고 깨는 데 약 1분. 세팅 순서는 `docs/setup.md`.
 - 현재 단계: 1단계 MVP(고양이 드러머 1마리).
 - **기술 결정(위 스택, 방 구조, HTTPS 방식)을 바꾸려면 먼저 사용자에게 묻는다.**
 
@@ -18,13 +19,13 @@
 - `npm run build`: `dist/` 생성(TV·폰 JS를 Chromium 79 문법으로 낮춤).
 - `npm start`: `dist/`를 서빙하는 실서버(3000). `/` → TV, `/p` → 폰.
 - `npm test`: 단위·통합 테스트(`node --test`). 빌드 후 실행하면 `dist` 문법 호환 검사도 한다.
-- `npm run tunnel`: `ngrok http 3000`(HTTPS 주소 발급, 센서 권한에 필요). ngrok은 별도 설치.
+- `npm run tunnel`: `ngrok http 3000`(PC에서 직접 돌릴 때만. 운영은 Render라 필요 없음).
 - `npm run sounds`: `assets/sounds/*.wav` 합성음 다시 생성.
-- 진단 모드: TV 주소에 `?debug`(예: `/tv/?debug`) → TV·폰(QR에 자동 포함)에 진단 화면, 5초마다 요약이 서버 터미널에 `[tv 1234] report: …` 형태로 찍힌다. 기기 오류는 진단 모드가 아니어도 항상 터미널에 `error:`로 찍힌다.
+- 진단 모드: TV 주소에 `?debug`(예: `/tv/?debug`) → TV·폰(QR에 자동 포함)에 진단 화면, 5초마다 요약이 서버 기록(Render 대시보드 Logs, 로컬은 터미널)에 `[tv 1234] report: …` 형태로 찍힌다. 기기 오류는 진단 모드가 아니어도 항상 `error:`로 찍힌다.
 - 완료 검증: `npm run build && npm test`(Stop 훅이 자동 실행).
 
 ## 3. 폴더 구조
-- `server/`: `index.js` HTTP 정적 서빙 + Socket.IO 중계, `rooms.js` 방 코드 관리(순수 로직), `client-log.js` 기기 기록 정리.
+- `server/`: `index.js` HTTP 정적 서빙 + Socket.IO 중계 + `/healthz`, `rooms.js` 방 코드 관리(순수 로직), `client-log.js` 기기 기록 정리, `limits.js` IP당 틀린 코드 제한(공개 인터넷 대비).
 - `tv/`: TV 페이지. `main.js` Phaser 무대, Howler 소리, 박자 시계, QR.
 - `phone/`: 폰 컨트롤러 페이지. 코드 입력, 센서 권한, 흔들림 → 전송, 화면 보호.
 - `shared/`: 서버·TV·폰 공용 순수 로직. `shake.js` 흔들림 판정, `beat.js` 박자 보정, `protocol.js` 이벤트 이름, `diag.js` 진단 계산. (`error-report.js`만 브라우저 전용)
@@ -65,5 +66,5 @@
 ## 7. 참고 위치
 - 하네스 실패 기록: `docs/harness-log.md` · 점검: `/harness-review`
 - 리뷰 서브에이전트: `.claude/agents/reviewer.md`
-- 실기기 테스트: `docs/test-checklist.md`
+- 세팅(Render): `docs/setup.md` · 실기기 테스트: `docs/test-checklist.md`
 - 외부 자료: Phaser 3 https://newdocs.phaser.io · Howler https://howlerjs.com · Socket.IO https://socket.io/docs/v4 · DeviceMotionEvent https://developer.mozilla.org/docs/Web/API/DeviceMotionEvent

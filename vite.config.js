@@ -22,7 +22,7 @@ export default defineConfig({
   server: {
     port: 3000,
     host: true,
-    allowedHosts: true, // ngrok 등 터널 주소 허용
+    allowedHosts: true, // ngrok 등 터널 주소 허용(PC 개발용)
     proxy: {
       "/socket.io": { target: "http://localhost:3001", ws: true },
     },

@@ -2,7 +2,7 @@
 // TV를 ?debug로 열면 QR에도 debug가 붙어 폰이 자동으로 진단 모드로 열린다.
 // - 센서 값 그래프(빨간 선 = 임계값), 초당 샘플 수, 지난 1초 최대 가속도
 // - 임계값 −/+ 로 민감도를 바로 바꿔 볼 수 있다(이 화면에서만, 새로고침하면 기본값)
-// - 5초마다 요약을 서버로 보내 PC 터미널에도 찍는다
+// - 5초마다 요약을 서버로 보내 서버 기록(Render Logs)에도 찍는다
 import { EVENTS } from "../shared/protocol.js";
 import { createRateMeter, createPeakHold, shortBrowser } from "../shared/diag.js";
 
