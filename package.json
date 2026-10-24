@@ -2,7 +2,7 @@
   "name": "shaky-animal-band",
   "version": "0.1.0",
   "private": true,
-  "description": "흔들흔들 동물 밴드 — 폰을 흔들면 TV 속 동물이 연주하는 가족 합주 게임",
+  "description": "흔들흔들 펭귄 밴드 — 폰을 흔들면 TV 속 펭귄들이 연주하는 가족 합주 게임",
   "type": "module",
   "engines": {
     "node": ">=20"
@@ -13,7 +13,8 @@
     "start": "node server/index.js",
     "test": "node --test \"tests/**/*.test.js\"",
     "sounds": "node scripts/gen-sounds.mjs",
-    "tunnel": "ngrok http 3000"
+    "tunnel": "ngrok http 3000",
+    "art": "node scripts/gen-art.mjs"
   },
   "dependencies": {
     "howler": "^2.2.4",

@@ -1,4 +1,5 @@
-// TV 무대: 방 코드·QR 표시, 시작 버튼으로 소리 잠금 해제, 흔들림이 오면 박자에 맞춰 동물 연주.
+// TV 무대: 방 코드·QR 표시, 시작 버튼으로 소리 잠금 해제, 펭귄 밴드 4마리가 폰 흔들기에 맞춰 연주.
+// 폰마다 펭귄 1마리(자리 slot). 효과음 버튼 → 펭귄 꽥, 누르고 말하기 → 펭귄 목소리로 재생.
 // 대상 브라우저: LG webOS 6.5(Chromium 79). 문법은 vite가 낮추지만 Web API는 79에 있는 것만 쓴다.
 import * as Phaser from "phaser";
 import { Howl, Howler } from "howler";
@@ -6,16 +7,30 @@ import { io } from "socket.io-client";
 import QRCode from "qrcode";
 import { EVENTS } from "../shared/protocol.js";
 import { DEFAULT_BPM, beatIndex, createBeatQueue, nearestBeat } from "../shared/beat.js";
+import { PENGUINS, SLOT_COUNT, isValidSlot, createMelody, XYLO_NOTES } from "../shared/band.js";
+import { toInt16, int16ToFloat, resampleLinear } from "../shared/pcm.js";
 import { installErrorReporter } from "../shared/error-report.js";
 import { createTvDebug, isDebug } from "./debug.js";
 
 const BPM = DEFAULT_BPM;
-const STRONG_SHAKE = 0.7; // 이 세기 이상이면 드럼과 함께 야옹
+const BGM_VOLUME = 0.35; // 배경 반주는 악기보다 작게
+const BGM_DUCK = 0.08; // 목소리가 나올 때 반주를 줄인다
+const VOICE_PITCH = 1.3; // 펭귄 목소리: 30% 높고 빠르게
 const CODE_KEY = "band.roomCode";
 const TOKEN_KEY = "band.tvToken"; // 재접속 시 같은 방을 넘겨받기 위한 비밀값
 
 // 테스트·디버그용 상태(Playwright가 읽는다)
-const state = (window.__band = { code: null, started: false, plays: 0, lastIntensity: 0, players: 0 });
+const state = (window.__band = {
+  code: null,
+  started: false,
+  plays: 0,
+  lastIntensity: 0,
+  lastSlot: null,
+  players: 0,
+  slots: [],
+  effects: 0,
+  voices: 0,
+});
 const DEBUG = isDebug(); // ?debug → 진단 화면
 
 // 소켓을 먼저 열어 두고 오류 보고기를 단다(무대 초기화 중 오류도 서버 기록에서 보이게)
@@ -24,25 +39,32 @@ let debug = { received() {}, error() {} };
 installErrorReporter(socket, "tv", message => debug.error(message));
 
 // ---------- 소리 ----------
+const howl = (name, extra) => new Howl(Object.assign({ src: ["/sounds/" + name + ".wav"], preload: true }, extra));
 const sounds = {
-  drum: new Howl({ src: ["/sounds/drum.wav"], preload: true }),
-  meows: [1, 2, 3].map(n => new Howl({ src: ["/sounds/meow-" + n + ".wav"], preload: true })),
+  drum: howl("drum"),
+  tambourine: howl("tambourine"),
+  maracas: howl("maracas"),
+  squawk: howl("squawk"),
+  xylo: XYLO_NOTES.map(n => howl("xylo-" + n)),
+  bgm: howl("bgm", { loop: true, volume: BGM_VOLUME }),
 };
-let meowTurn = 0;
+const melodies = PENGUINS.map(() => createMelody()); // 실로폰 자리는 흔들 때마다 다음 음
 
-function playSound(intensity) {
-  const id = sounds.drum.play();
-  sounds.drum.volume(intensity, id);
-  if (intensity >= STRONG_SHAKE) {
-    const meow = sounds.meows[meowTurn++ % sounds.meows.length];
-    const mid = meow.play();
-    meow.volume(intensity * 0.8, mid);
-  }
+function playOnce(sound, volume) {
+  const id = sound.play();
+  sound.volume(volume, id);
+}
+
+function playInstrument(slot, intensity) {
+  const instrument = PENGUINS[slot].instrument;
+  if (instrument === "xylophone") playOnce(sounds.xylo[melodies[slot].next()], intensity);
+  else playOnce(sounds[instrument], intensity);
 }
 
 // ---------- 무대 (Phaser) ----------
 let stage = null; // create()에서 채워진다
 let beatOrigin = performance.now();
+const NOTE_COLORS = [0xff5d73, 0xffd166, 0x06d6a0, 0x4cc9f0];
 
 class StageScene extends Phaser.Scene {
   constructor() {
@@ -50,7 +72,10 @@ class StageScene extends Phaser.Scene {
   }
 
   preload() {
-    this.load.svg("cat", "/animals/cat.svg", { width: 512, height: 512 });
+    for (let i = 0; i < SLOT_COUNT; i++) {
+      this.load.svg("p" + i, "/animals/penguin-" + (i + 1) + ".svg", { width: 512, height: 512 });
+      this.load.svg("p" + i + "s", "/animals/penguin-" + (i + 1) + "-sleep.svg", { width: 512, height: 512 });
+    }
   }
 
   create() {
@@ -64,30 +89,98 @@ class StageScene extends Phaser.Scene {
     this.add.rectangle(110, H / 2, 220, H, 0xb3122e);
     this.add.rectangle(W - 110, H / 2, 220, H, 0xb3122e);
     this.add.rectangle(W / 2, 50, W, 100, 0x8f0e25);
-    this.spot = this.add.ellipse(W / 2 + 200, H - 200, 760, 180, 0xfff3b0, 0.25);
 
     // 박자 표시 불빛 4개(글자 없이 박자를 보여 준다)
     this.lights = [];
-    for (let i = 0; i < 4; i++) {
-      this.lights.push(this.add.circle(W / 2 + 200 - 150 + i * 100, H - 60, 26, 0xffd166, 0.25));
-    }
+    for (let i = 0; i < 4; i++) this.lights.push(this.add.circle(W / 2 - 150 + i * 100, H - 50, 22, 0xffd166, 0.25));
     this.lastBeat = -1;
 
-    // 음표 텍스처(흔들 때 날아오르는 그림)
+    this.makeTextures();
+
+    // 펭귄 4마리: 연결된 폰의 펭귄만 깨어 있다
+    const xs = [470, 810, 1150, 1490];
+    this.penguins = xs.map((x, slot) => {
+      const spot = this.add.ellipse(x, H - 170, 340, 90, 0xfff3b0, 0.12);
+      const img = this.add.image(x, H - 360, "p" + slot + "s").setScale(0.72);
+      const p = { slot, img, spot, baseY: img.y, baseScale: 0.72, awake: false, breathe: null };
+      this.breathe(p);
+      return p;
+    });
+    stage = this;
+    this.setActiveSlots(state.slots);
+  }
+
+  // 흔들 때 날아오르는 음표, 꽥 할 때 터지는 별, 말할 때 나오는 소리 물결
+  makeTextures() {
     const g = this.make.graphics({ x: 0, y: 0, add: false });
     g.fillStyle(0xffffff, 1);
     g.fillEllipse(18, 52, 34, 26);
     g.fillRect(30, 6, 7, 48);
     g.fillTriangle(37, 6, 37, 26, 58, 22);
     g.generateTexture("note", 60, 66);
+    g.clear();
+    g.fillStyle(0xffffff, 1);
+    const pts = [];
+    for (let i = 0; i < 16; i++) {
+      const r = i % 2 ? 22 : 60;
+      const a = (Math.PI * 2 * i) / 16 - Math.PI / 2;
+      pts.push(new Phaser.Geom.Point(64 + r * Math.cos(a), 64 + r * Math.sin(a)));
+    }
+    g.fillPoints(pts, true);
+    g.generateTexture("burst", 128, 128);
+    g.clear();
+    g.lineStyle(10, 0xffffff, 1);
+    for (let i = 0; i < 3; i++) {
+      g.beginPath();
+      g.arc(20, 60, 22 + i * 22, -0.7, 0.7);
+      g.strokePath();
+    }
+    g.generateTexture("wave", 100, 120);
     g.destroy();
+  }
 
-    this.cat = this.add.image(W / 2 + 200, H - 330, "cat").setScale(1.2);
-    this.catBaseY = this.cat.y;
-    // 가만히 있을 때도 살짝 숨쉬기
-    this.tweens.add({ targets: this.cat, scaleX: 1.22, scaleY: 1.18, duration: 900, yoyo: true, repeat: -1, ease: "Sine.easeInOut" });
+  breathe(p) {
+    if (p.breathe) p.breathe.stop();
+    p.img.setScale(p.baseScale);
+    p.breathe = this.tweens.add({
+      targets: p.img,
+      scaleX: p.baseScale * 1.02,
+      scaleY: p.baseScale * 0.97,
+      duration: p.awake ? 900 : 1800,
+      yoyo: true,
+      repeat: -1,
+      ease: "Sine.easeInOut",
+    });
+  }
 
-    stage = this;
+  setActiveSlots(slots) {
+    if (!this.penguins) return;
+    this.penguins.forEach(p => {
+      const awake = slots.indexOf(p.slot) !== -1;
+      if (awake === p.awake) return;
+      p.awake = awake;
+      p.img.setTexture("p" + p.slot + (awake ? "" : "s"));
+      p.img.setAlpha(awake ? 1 : 0.7);
+      p.spot.setAlpha(awake ? 0.3 : 0.12);
+      this.breathe(p);
+      if (awake) this.hop(p, 60); // 깨어나며 깡충
+    });
+  }
+
+  hop(p, height) {
+    if (p.breathe) p.breathe.stop();
+    this.tweens.killTweensOf(p.img);
+    p.img.setScale(p.baseScale).setY(p.baseY).setAngle(0);
+    const s = p.baseScale;
+    this.tweens.chain({
+      targets: p.img,
+      tweens: [
+        { scaleX: s * 1.12, scaleY: s * 0.86, duration: 70, ease: "Quad.easeOut" },
+        { y: p.baseY - height, scaleX: s * 0.95, scaleY: s * 1.08, duration: 160, ease: "Quad.easeOut" },
+        { y: p.baseY, scaleX: s, scaleY: s, duration: 220, ease: "Bounce.easeOut" },
+      ],
+      onComplete: () => this.breathe(p),
+    });
   }
 
   update() {
@@ -98,38 +191,48 @@ class StageScene extends Phaser.Scene {
     this.lights.forEach((l, i) => l.setFillStyle(0xffd166, i === b % 4 ? 1 : 0.25));
   }
 
-  // 연주 동작: 찌그러졌다 튀어 오르기 + 음표
-  perform(intensity) {
-    const cat = this.cat;
-    this.tweens.killTweensOf(cat);
-    cat.setScale(1.2).setY(this.catBaseY);
-    const jump = 40 + 100 * intensity;
-    this.tweens.chain({
-      targets: cat,
-      tweens: [
-        { scaleX: 1.34, scaleY: 1.02, duration: 70, ease: "Quad.easeOut" },
-        { y: this.catBaseY - jump, scaleX: 1.14, scaleY: 1.3, duration: 160, ease: "Quad.easeOut" },
-        { y: this.catBaseY, scaleX: 1.2, scaleY: 1.2, duration: 220, ease: "Bounce.easeOut" },
-      ],
-    });
-    this.tweens.add({ targets: this.spot, alpha: { from: 0.6, to: 0.25 }, duration: 400 });
-
-    const colors = [0xff5d73, 0xffd166, 0x06d6a0, 0x4cc9f0];
-    const count = 1 + Math.round(intensity * 3);
+  // 연주: 그 펭귄이 깡충 + 음표
+  perform(slot, intensity) {
+    const p = this.penguins[slot];
+    this.hop(p, 30 + 80 * intensity);
+    this.tweens.add({ targets: p.spot, alpha: { from: 0.6, to: p.awake ? 0.3 : 0.12 }, duration: 400 });
+    const count = 1 + Math.round(intensity * 2);
     for (let i = 0; i < count; i++) {
       const note = this.add
-        .image(cat.x + Phaser.Math.Between(-180, 180), cat.y - 200, "note")
-        .setTint(colors[Phaser.Math.Between(0, colors.length - 1)])
-        .setScale(0.8 + intensity * 0.6);
+        .image(p.img.x + Phaser.Math.Between(-120, 120), p.baseY - 150, "note")
+        .setTint(NOTE_COLORS[Phaser.Math.Between(0, NOTE_COLORS.length - 1)])
+        .setScale(0.6 + intensity * 0.5);
       this.tweens.add({
         targets: note,
-        y: note.y - Phaser.Math.Between(200, 380),
-        x: note.x + Phaser.Math.Between(-80, 80),
+        y: note.y - Phaser.Math.Between(180, 320),
+        x: note.x + Phaser.Math.Between(-60, 60),
         angle: Phaser.Math.Between(-30, 30),
         alpha: 0,
         duration: 1100,
         ease: "Sine.easeOut",
         onComplete: () => note.destroy(),
+      });
+    }
+  }
+
+  // 꽥: 좌우로 흔들며 뛰고, 부리 앞에서 별이 터진다
+  squawk(slot) {
+    const p = this.penguins[slot];
+    this.hop(p, 50);
+    this.tweens.add({ targets: p.img, angle: { from: -12, to: 12 }, duration: 80, yoyo: true, repeat: 3, onComplete: () => p.img.setAngle(0) });
+    const burst = this.add.image(p.img.x, p.baseY - 40, "burst").setTint(PENGUINS[slot].color).setScale(0.3);
+    this.tweens.add({ targets: burst, scale: 1.6, alpha: 0, angle: 45, duration: 500, ease: "Quad.easeOut", onComplete: () => burst.destroy() });
+  }
+
+  // 말하기: 말하는 동안 고개를 까딱이고 소리 물결이 나온다
+  talk(slot, seconds) {
+    const p = this.penguins[slot];
+    const repeats = Math.max(1, Math.round((seconds * 1000) / 260));
+    this.tweens.add({ targets: p.img, angle: { from: -5, to: 5 }, duration: 130, yoyo: true, repeat: repeats, onComplete: () => p.img.setAngle(0) });
+    for (let i = 0; i < Math.min(8, repeats); i++) {
+      this.time.delayedCall(i * 300, () => {
+        const w = this.add.image(p.img.x + 60, p.baseY - 60, "wave").setTint(PENGUINS[slot].color).setScale(0.5);
+        this.tweens.add({ targets: w, x: w.x + 120, y: w.y - 80, scale: 1.1, alpha: 0, duration: 700, onComplete: () => w.destroy() });
       });
     }
   }
@@ -147,25 +250,72 @@ const game = new Phaser.Game({
 });
 
 // ---------- 흔들림 수신 → 박자 보정 후 연주 ----------
-function perform(intensity) {
+function perform(slot, intensity) {
   state.plays++;
   state.lastIntensity = intensity;
-  if (state.started) playSound(intensity);
-  if (stage) stage.perform(intensity);
+  state.lastSlot = slot;
+  if (state.started) playInstrument(slot, intensity);
+  if (stage) stage.perform(slot, intensity);
 }
 
-// 같은 박자의 흔들림은 가장 센 것 하나로 묶어 한 번만 친다(shared/beat.js)
-const beatQueue = createBeatQueue({ onBeat: perform, schedule: (fn, ms) => setTimeout(fn, ms), bpm: BPM });
+// 펭귄(폰)마다 따로 박자 보정: 같은 박자에 온 흔들림은 펭귄별로 가장 센 것 하나 → 여러 악기가 겹쳐 합주가 된다
+const beatQueues = PENGUINS.map(p =>
+  createBeatQueue({ onBeat: v => perform(p.slot, v), schedule: (fn, ms) => setTimeout(fn, ms), bpm: BPM })
+);
+
+const slotOf = msg => (msg && isValidSlot(msg.slot) ? msg.slot : 0);
 
 function onPlay(msg) {
   const intensity = msg && typeof msg.intensity === "number" ? msg.intensity : 0.5;
+  const slot = slotOf(msg);
   if (!state.started) {
     debug.received(intensity, 0);
-    return perform(intensity); // 시작 전: 움직임만(소리 잠금 상태)
+    return perform(slot, intensity); // 시작 전: 움직임만(소리 잠금 상태)
   }
   const now = performance.now();
   debug.received(intensity, Math.round(nearestBeat(now, beatOrigin, BPM).delay));
-  beatQueue(intensity, now, beatOrigin);
+  beatQueues[slot](intensity, now, beatOrigin);
+}
+
+// ---------- 펭귄 효과음 ----------
+function onEffect(msg) {
+  const slot = slotOf(msg);
+  state.effects++;
+  if (state.started) playOnce(sounds.squawk, 1);
+  if (stage) stage.squawk(slot);
+}
+
+// ---------- 누르고 말하기: 16bit PCM → 펭귄 목소리로 재생 ----------
+function makeBuffer(ctx, samples, rate) {
+  try {
+    const buf = ctx.createBuffer(1, samples.length, rate);
+    buf.getChannelData(0).set(samples);
+    return buf;
+  } catch (e) {
+    // 낮은 샘플링 주파수를 못 만드는 브라우저면 출력 주파수로 바꿔서 만든다
+    const up = resampleLinear(samples, rate, ctx.sampleRate);
+    const buf = ctx.createBuffer(1, up.length, ctx.sampleRate);
+    buf.getChannelData(0).set(up);
+    return buf;
+  }
+}
+
+function onVoice(msg) {
+  if (!msg || !state.started || !Howler.ctx) return; // 소리 잠금 전에는 재생할 수 없다
+  const samples = int16ToFloat(toInt16(msg.pcm));
+  if (!samples.length || !(msg.rate > 0)) return;
+  const slot = slotOf(msg);
+  const ctx = Howler.ctx;
+  const source = ctx.createBufferSource();
+  source.buffer = makeBuffer(ctx, samples, msg.rate);
+  source.playbackRate.value = VOICE_PITCH;
+  source.connect(Howler.masterGain || ctx.destination);
+  const seconds = samples.length / msg.rate / VOICE_PITCH;
+  state.voices++;
+  sounds.bgm.fade(BGM_VOLUME, BGM_DUCK, 150);
+  source.onended = () => sounds.bgm.fade(BGM_DUCK, BGM_VOLUME, 400);
+  source.start();
+  if (stage) stage.talk(slot, seconds);
 }
 
 // ---------- 방 코드·QR ----------
@@ -192,14 +342,20 @@ function showRoom(code, token) {
     .catch(() => {});
 }
 
-function showPlayers(count) {
-  state.players = count;
+const hex = c => "#" + ("000000" + c.toString(16)).slice(-6);
+
+function showPlayers(msg) {
+  state.players = (msg && msg.count) || 0;
+  state.slots = msg && Array.isArray(msg.slots) ? msg.slots.filter(isValidSlot) : [];
+  // 연결된 펭귄 색깔 점(QR 아래)
   playersEl.innerHTML = "";
-  for (let i = 0; i < count; i++) {
+  state.slots.forEach(slot => {
     const d = document.createElement("div");
     d.className = "phone";
+    d.style.background = hex(PENGUINS[slot].color);
     playersEl.appendChild(d);
-  }
+  });
+  if (stage) stage.setActiveSlots(state.slots);
 }
 
 let tvToken = null;
@@ -218,8 +374,10 @@ socket.on("connect", () => {
     showRoom(res.code, res.token);
   });
 });
-socket.on(EVENTS.PLAYERS, msg => showPlayers(msg.count));
+socket.on(EVENTS.PLAYERS, showPlayers);
 socket.on(EVENTS.PLAY, onPlay);
+socket.on(EVENTS.EFFECT, onEffect);
+socket.on(EVENTS.VOICE, onVoice);
 
 // ---------- 시작 (소리 잠금 해제) ----------
 const overlay = document.getElementById("start-overlay");
@@ -229,11 +387,12 @@ function start() {
   if (state.started) return;
   if (Howler.ctx && Howler.ctx.state !== "running") Howler.ctx.resume();
   state.started = true;
-  beatOrigin = performance.now();
+  beatOrigin = performance.now(); // 반주 0박과 박자 시계를 맞춘다
+  sounds.bgm.play();
   overlay.classList.add("hidden");
   card.classList.remove("big");
   card.classList.add("small");
-  playSound(0.6); // 시작 신호
+  playOnce(sounds.drum, 0.6); // 시작 신호
 }
 
 startBtn.addEventListener("click", start);
@@ -256,6 +415,9 @@ debug = createTvDebug({
     started: state.started,
     code: state.code,
     players: state.players,
+    slots: state.slots,
     plays: state.plays,
+    effects: state.effects,
+    voices: state.voices,
   }),
 });

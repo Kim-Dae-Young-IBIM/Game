@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- 흔들흔들 펭귄 밴드: 직접 그린 오리지널 캐릭터 (scarf · drum) -->
+  
+  <ellipse cx="210" cy="476" rx="40" ry="17" fill="#ff9f1c"/>
+  <ellipse cx="302" cy="476" rx="40" ry="17" fill="#ff9f1c"/>
+  <g transform="translate(0 330)"><ellipse cx="150" cy="0" rx="30" ry="86" fill="#263347" stroke="#7d8fb3" stroke-width="5" transform="translate(0 0) rotate(-35 150 0)"/><ellipse cx="362" cy="0" rx="30" ry="86" fill="#263347" stroke="#7d8fb3" stroke-width="5" transform="translate(0 0) rotate(35 362 0)"/></g>
+  <ellipse cx="256" cy="300" rx="140" ry="178" fill="#263347" stroke="#7d8fb3" stroke-width="6"/>
+  <ellipse cx="256" cy="335" rx="100" ry="135" fill="#f8f9fb"/>
+  <ellipse cx="256" cy="212" rx="106" ry="80" fill="#f8f9fb"/>
+  <ellipse cx="220" cy="204" rx="17" ry="21" fill="#1d1d1d"/><circle cx="226" cy="196" r="6" fill="#fff"/>
+       <ellipse cx="292" cy="204" rx="17" ry="21" fill="#1d1d1d"/><circle cx="298" cy="196" r="6" fill="#fff"/>
+  <ellipse cx="190" cy="242" rx="18" ry="11" fill="#ff8fa3" opacity="0.75"/>
+  <ellipse cx="322" cy="242" rx="18" ry="11" fill="#ff8fa3" opacity="0.75"/>
+  <path d="M234 232 Q256 220 278 232 Q256 266 234 232 Z" fill="#ff9f1c" stroke="#e07b00" stroke-width="3"/>
+  
+  <path d="M146 270 Q256 300 366 270 L366 302 Q256 334 146 302 Z" fill="#e63946"/>
+  <rect x="300" y="290" width="40" height="88" rx="10" fill="#e63946" transform="rotate(-8 320 290)"/>
+  <path d="M160 284 L352 284" stroke="#fff" stroke-width="5" stroke-dasharray="14 12" opacity="0.6"/>
+  
+  <rect x="150" y="372" width="212" height="96" rx="14" fill="#e63946"/>
+  <ellipse cx="256" cy="372" rx="106" ry="28" fill="#fff4e6" stroke="#c1121f" stroke-width="6"/>
+  <path d="M160 392 L200 460 L240 392 L280 460 L320 392 L352 452" fill="none" stroke="#ffd166" stroke-width="8" stroke-linejoin="round"/>
+  <line x1="176" y1="300" x2="226" y2="364" stroke="#8d5524" stroke-width="10" stroke-linecap="round"/>
+  <line x1="336" y1="300" x2="286" y2="364" stroke="#8d5524" stroke-width="10" stroke-linecap="round"/>
+  <circle cx="228" cy="366" r="11" fill="#ffd166"/><circle cx="284" cy="366" r="11" fill="#ffd166"/>
+</svg>

@@ -8,6 +8,7 @@ import { request } from "node:http";
 import { io as connect } from "socket.io-client";
 import { createGameServer } from "../server/index.js";
 import { EVENTS } from "../shared/protocol.js";
+import { toInt16 } from "../shared/pcm.js";
 
 let server;
 let url;
@@ -54,13 +55,14 @@ test("TV 방 생성 → 폰 입장 → 흔들림이 TV로 전달", async () => {
   const phone = await client();
   const players = playersBecome(tv, 1);
   const res = await ask(phone, EVENTS.PHONE_JOIN, { code });
-  assert.deepEqual(res, { ok: true, animal: "cat" });
+  assert.deepEqual(res, { ok: true, slot: 0, instrument: "drum" });
   await players;
 
   const play = next(tv, EVENTS.PLAY);
   phone.emit(EVENTS.SHAKE, { intensity: 0.8 });
   const msg = await play;
   assert.equal(msg.intensity, 0.8);
+  assert.equal(msg.slot, 0);
   assert.equal(msg.phoneId, phone.id);
 });
 
@@ -220,6 +222,84 @@ test("같은 IP에서 틀린 코드를 계속 넣으면 다시 접속해도 막�
   } finally {
     await web.close();
   }
+});
+
+// ---------- 2단계: 펭귄 자리·효과음·목소리 ----------
+async function roomWithPhones(n) {
+  const tv = await client();
+  const { code } = await ask(tv, EVENTS.TV_CREATE, {});
+  const phones = [];
+  for (let i = 0; i < n; i++) {
+    const p = await client();
+    p.joined = await ask(p, EVENTS.PHONE_JOIN, { code });
+    phones.push(p);
+  }
+  return { tv, code, phones };
+}
+
+test("폰마다 다른 펭귄 자리와 악기, TV에 쓰는 자리 목록", async () => {
+  const { tv, code, phones } = await roomWithPhones(2);
+  assert.deepEqual(phones.map(p => p.joined.slot), [0, 1]);
+  assert.deepEqual(phones.map(p => p.joined.instrument), ["drum", "tambourine"]);
+  const players = playersBecome(tv, 3);
+  const third = await client();
+  assert.equal((await ask(third, EVENTS.PHONE_JOIN, { code })).slot, 2);
+  assert.deepEqual((await players).slots, [0, 1, 2]);
+  const play = next(tv, EVENTS.PLAY);
+  phones[1].emit(EVENTS.SHAKE, { intensity: 0.5 });
+  assert.equal((await play).slot, 1, "흔든 폰의 자리로 연주");
+});
+
+test("새로고침한 폰은 원래 자리를 다시 받는다", async () => {
+  const { code, phones } = await roomWithPhones(3);
+  phones[1].close(); // 자리 1이 빈다
+  await until(() => server.rooms.getRoom(code).phones.size === 2);
+  const again = await client();
+  assert.equal((await ask(again, EVENTS.PHONE_JOIN, { code, slot: 1 })).slot, 1);
+  const other = await client();
+  assert.equal((await ask(other, EVENTS.PHONE_JOIN, { code, slot: 0 })).slot, 3, "남이 쓰는 자리는 못 받음");
+});
+
+test("펭귄 효과음: 자리와 함께 TV로, 1초에 1번", async () => {
+  const { tv, phones } = await roomWithPhones(2);
+  const got = [];
+  tv.on(EVENTS.EFFECT, m => got.push(m));
+  for (let i = 0; i < 5; i++) phones[1].emit(EVENTS.EFFECT, { type: "evil" });
+  await until(() => got.length >= 1);
+  await new Promise(r => setTimeout(r, 150));
+  assert.deepEqual(got, [{ slot: 1, type: "squawk" }]);
+});
+
+test("목소리: 검사 통과한 PCM만 TV로, 2초에 1번", async () => {
+  const { tv, phones } = await roomWithPhones(1);
+  const got = [];
+  tv.on(EVENTS.VOICE, m => got.push(m));
+  phones[0].emit(EVENTS.VOICE, { pcm: new Int16Array(3).buffer.slice(0, 5), rate: 16000 }); // 홀수 바이트
+  phones[0].emit(EVENTS.VOICE, { pcm: "not binary", rate: 16000 });
+  const pcm = new Int16Array(16000);
+  pcm[0] = 1234;
+  phones[0].emit(EVENTS.VOICE, { pcm: pcm.buffer, rate: 16000 });
+  phones[0].emit(EVENTS.VOICE, { pcm: pcm.buffer, rate: 16000 }); // 2초 안에 또 → 버림
+  await until(() => got.length >= 1);
+  await new Promise(r => setTimeout(r, 200));
+  assert.equal(got.length, 1);
+  assert.equal(got[0].slot, 0);
+  assert.equal(got[0].rate, 16000);
+  const back = toInt16(got[0].pcm);
+  assert.equal(back.length, 16000);
+  assert.equal(back[0], 1234);
+});
+
+test("입장 안 한 소켓의 효과음·목소리는 무시", async () => {
+  const { tv } = await roomWithPhones(0);
+  const stranger = await client();
+  let got = 0;
+  tv.on(EVENTS.EFFECT, () => got++);
+  tv.on(EVENTS.VOICE, () => got++);
+  stranger.emit(EVENTS.EFFECT, {});
+  stranger.emit(EVENTS.VOICE, { pcm: new Int16Array(8000).buffer, rate: 16000 });
+  await new Promise(r => setTimeout(r, 150));
+  assert.equal(got, 0);
 });
 
 // ---------- 진단 ----------

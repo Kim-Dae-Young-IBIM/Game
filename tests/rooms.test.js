@@ -88,6 +88,21 @@ test("방을 지우면 소켓 소속도 정리된다", () => {
   assert.equal(rooms.size, 0);
 });
 
+test("폰 자리: 순서대로, 같은 폰이 다시 들어와도 유지, 원하는 빈 자리", () => {
+  const rooms = createRoomManager();
+  const { code } = rooms.createRoom("tv").room;
+  const room = rooms.joinRoom(code, "a");
+  rooms.joinRoom(code, "b");
+  rooms.joinRoom(code, "a", 3);
+  assert.equal(room.phones.get("a"), 0, "이미 들어온 폰은 자리 유지");
+  assert.equal(room.phones.get("b"), 1);
+  rooms.joinRoom(code, "c", 3);
+  assert.equal(room.phones.get("c"), 3);
+  assert.deepEqual(rooms.slotsOf(room), [0, 1, 3]);
+  rooms.removeSocket("b");
+  assert.deepEqual(rooms.slotsOf(room), [0, 3]);
+});
+
 test("세기 값은 0~1로 자른다", () => {
   assert.equal(clampIntensity(2), 1);
   assert.equal(clampIntensity(-1), 0);
