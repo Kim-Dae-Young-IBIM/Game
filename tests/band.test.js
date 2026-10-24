@@ -25,7 +25,7 @@ test("새로고침하면 원래 자리(비어 있을 때만)", () => {
 });
 
 test("4자리가 다 차면 돌아가며 같이 쓴다", () => {
-  assert.equal(pickSlot([0, 1, 2, 3], 1, 4), 0);
+  assert.equal(pickSlot([0, 1, 2, 3], 1, 4), 1, "다 찼어도 원래 펭귄이 있으면 그것");
   assert.equal(pickSlot([0, 1, 2, 3], undefined, 5), 1);
   assert.ok(isValidSlot(pickSlot([0, 1, 2, 3], undefined, 99)));
 });

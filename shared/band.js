@@ -20,7 +20,7 @@ export function pickSlot(taken, preferred, phoneCount = 0) {
   const used = new Set(taken);
   if (isValidSlot(preferred) && !used.has(preferred)) return preferred;
   for (let s = 0; s < SLOT_COUNT; s++) if (!used.has(s)) return s;
-  return phoneCount % SLOT_COUNT;
+  return isValidSlot(preferred) ? preferred : phoneCount % SLOT_COUNT;
 }
 
 // 실로폰 멜로디: 도·레·미·솔·라(5음)만 써서 아무렇게나 흔들어도 음악처럼 들린다.

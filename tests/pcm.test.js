@@ -72,6 +72,7 @@ test("서버 쪽 목소리 확인", () => {
   assert.equal(isValidVoice({ pcm: "abc", rate: 16000 }), false);
   assert.equal(isValidVoice({ pcm: new ArrayBuffer(0), rate: 16000 }), false);
   assert.equal(isValidVoice(null), false);
+  assert.equal(isValidVoice({ pcm: { byteLength: 2, junk: "x".repeat(1000) }, rate: 16000 }), false, "위조 객체");
 });
 
 test("받은 PCM 형태가 달라도 Int16Array로", () => {

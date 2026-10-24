@@ -300,6 +300,9 @@ function makeBuffer(ctx, samples, rate) {
   }
 }
 
+// 목소리가 겹쳐도 반주는 처음 시작할 때 한 번 줄이고, 마지막 목소리가 끝날 때 한 번 되돌린다
+let voicesPlaying = 0;
+
 function onVoice(msg) {
   if (!msg || !state.started || !Howler.ctx) return; // 소리 잠금 전에는 재생할 수 없다
   const samples = int16ToFloat(toInt16(msg.pcm));
@@ -312,8 +315,10 @@ function onVoice(msg) {
   source.connect(Howler.masterGain || ctx.destination);
   const seconds = samples.length / msg.rate / VOICE_PITCH;
   state.voices++;
-  sounds.bgm.fade(BGM_VOLUME, BGM_DUCK, 150);
-  source.onended = () => sounds.bgm.fade(BGM_DUCK, BGM_VOLUME, 400);
+  if (voicesPlaying++ === 0) sounds.bgm.fade(sounds.bgm.volume(), BGM_DUCK, 150);
+  source.onended = () => {
+    if (--voicesPlaying === 0) sounds.bgm.fade(sounds.bgm.volume(), BGM_VOLUME, 400);
+  };
   source.start();
   if (stage) stage.talk(slot, seconds);
 }
@@ -387,7 +392,11 @@ function start() {
   if (state.started) return;
   if (Howler.ctx && Howler.ctx.state !== "running") Howler.ctx.resume();
   state.started = true;
-  beatOrigin = performance.now(); // 반주 0박과 박자 시계를 맞춘다
+  beatOrigin = performance.now();
+  // 반주가 실제로 시작된 순간(로딩·오디오 깨우기 지연 뒤)을 0박으로 다시 맞춘다
+  sounds.bgm.once("play", () => {
+    beatOrigin = performance.now();
+  });
   sounds.bgm.play();
   overlay.classList.add("hidden");
   card.classList.remove("big");

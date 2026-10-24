@@ -226,6 +226,9 @@ document.addEventListener("keydown", e => {
 // ---------- 시작 ----------
 function backToJoin() {
   state.joined = false;
+  micPressed = false;
+  micBtn.classList.remove("recording");
+  if (recorder) recorder.release(); // 방이 닫히면 마이크도 끈다
   state.code = null;
   playScreen.classList.add("hidden");
   joinScreen.classList.remove("hidden");
@@ -324,7 +327,7 @@ micBtn.addEventListener("pointerdown", e => {
   recorder
     .prepare()
     .then(() => {
-      state.mic = "켜짐";
+      state.mic = "켜짐(" + recorder.audioState + ")";
       // 처음엔 권한 창 때문에 손을 뗐을 수 있다 → 아직 누르고 있을 때만 녹음
       if (!micPressed) return;
       recorder.start();
@@ -332,12 +335,15 @@ micBtn.addEventListener("pointerdown", e => {
       if (typeof navigator.vibrate === "function") navigator.vibrate(15);
     })
     .catch(err => {
-      state.mic = "거부: " + (err && err.name ? err.name : err);
-      micBtn.classList.add("disabled"); // 아이 화면엔 실패 표시 없이 회색 버튼만
+      const name = err && err.name ? err.name : String(err);
+      state.mic = "오류: " + name;
+      // 권한 거부만 회색으로 막는다(아이 화면엔 실패 표시 없음). 통화 중 같은 일시 오류는 다음에 다시 시도.
+      if (name === "NotAllowedError" || name === "SecurityError") micBtn.classList.add("disabled");
     });
 });
 
 function micRelease() {
+  if (recorder) recorder.wake(); // iOS: 손을 뗄 때(탭 완료)도 오디오를 깨운다 — 다음 녹음을 위해
   if (!micPressed) return;
   micPressed = false;
   if (recorder && recorder.recording) sendVoice(recorder.stop());

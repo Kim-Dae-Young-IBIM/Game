@@ -92,8 +92,9 @@ export function createGameServer({ staticDir, tvGraceMs = 60000, log = console.l
   const MAX_JOIN_FAILS = 20; // 소켓당 틀린 코드 허용 횟수(코드 무차별 대입 방지)
   const ipFails = createFailLimiter(ipJoinFails); // IP당 틀린 코드 제한(다시 접속해도 유지)
   const LOGS_PER_SEC = 5; // 소켓당 기기 기록 출력 상한(터미널 폭주 방지)
-  const EFFECT_MIN_INTERVAL_MS = 1000; // 펭귄 효과음 버튼: 1초에 1번
-  const VOICE_MIN_INTERVAL_MS = 2000; // 목소리: 2초에 1번
+  // 폰은 보낸 시각, 서버는 받은 시각 기준이라 네트워크 흔들림만큼 서버 간격을 조금 짧게 둔다
+  const EFFECT_MIN_INTERVAL_MS = 800; // 펭귄 효과음 버튼(폰은 1초에 1번)
+  const VOICE_MIN_INTERVAL_MS = 1500; // 목소리(폰은 2초에 1번)
 
   const playerCount = room => {
     if (room.tvId) io.to(room.tvId).emit(EVENTS.PLAYERS, { count: room.phones.size, slots: rooms.slotsOf(room) });

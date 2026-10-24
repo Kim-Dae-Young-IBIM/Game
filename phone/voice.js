@@ -11,6 +11,8 @@ export function isVoiceSupported() {
   );
 }
 
+const IDLE_RELEASE_MS = 15000; // 마지막 녹음 뒤 이 시간 동안 안 쓰면 마이크를 끈다(표시등·배터리)
+
 // onAutoStop(result): 최대 길이(5초)가 되어 저절로 멈췄을 때 호출
 export function createVoiceRecorder({ onAutoStop }) {
   let ctx = null;
@@ -20,6 +22,9 @@ export function createVoiceRecorder({ onAutoStop }) {
   let chunks = [];
   let recording = false;
   let timer = null;
+  let idleTimer = null;
+  let preparing = null; // 진행 중인 준비(겹쳐 누르면 같은 것을 기다린다)
+  let generation = 0; // release()마다 올라간다: 늦게 끝난 준비는 버린다
 
   // 사용자 탭 안에서 먼저(동기적으로) 불러야 iOS가 오디오를 허락한다
   function wake() {
@@ -31,13 +36,36 @@ export function createVoiceRecorder({ onAutoStop }) {
   }
 
   // 마이크 준비(처음 한 번은 권한 창이 뜬다). 거부되면 예외.
-  async function prepare() {
+  function prepare() {
     wake();
+    clearTimeout(idleTimer);
     const live = stream && stream.getAudioTracks().some(t => t.readyState === "live");
-    if (live) return;
-    stream = await navigator.mediaDevices.getUserMedia({
+    if (live) return Promise.resolve();
+    if (!preparing) {
+      const gen = generation;
+      preparing = open(gen).then(
+        () => {
+          preparing = null;
+        },
+        err => {
+          preparing = null;
+          throw err;
+        }
+      );
+    }
+    return preparing;
+  }
+
+  async function open(gen) {
+    const s = await navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
     });
+    if (gen !== generation) {
+      // 준비하는 사이 화면을 떠났다 → 바로 끈다
+      s.getTracks().forEach(t => t.stop());
+      throw Object.assign(new Error("released"), { name: "AbortError" });
+    }
+    stream = s;
     source = ctx.createMediaStreamSource(stream);
     processor = ctx.createScriptProcessor(4096, 1, 1);
     processor.onaudioprocess = e => {
@@ -64,13 +92,17 @@ export function createVoiceRecorder({ onAutoStop }) {
     recording = false;
     const pcm = encodeVoice(chunks, ctx.sampleRate, VOICE_RATE);
     chunks = [];
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(release, IDLE_RELEASE_MS);
     return pcm ? { pcm: pcm.buffer, rate: VOICE_RATE } : null;
   }
 
   // 화면을 떠나면 마이크를 끈다(다시 누르면 다시 켠다)
   function release() {
+    generation++;
     recording = false;
     clearTimeout(timer);
+    clearTimeout(idleTimer);
     if (stream) stream.getTracks().forEach(t => t.stop());
     if (source) source.disconnect();
     if (processor) processor.disconnect();
@@ -85,6 +117,10 @@ export function createVoiceRecorder({ onAutoStop }) {
     release,
     get recording() {
       return recording;
+    },
+    // 오디오 상태(진단용): iOS에서 suspended면 녹음이 비어 있다
+    get audioState() {
+      return ctx ? ctx.state : "-";
     },
   };
 }

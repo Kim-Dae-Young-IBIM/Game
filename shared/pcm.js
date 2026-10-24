@@ -103,7 +103,9 @@ export function toInt16(pcm) {
 export function isValidVoice(payload) {
   if (!payload || typeof payload !== "object") return false;
   const { pcm, rate } = payload;
-  const len = pcm && typeof pcm.byteLength === "number" ? pcm.byteLength : -1;
+  // 속성(byteLength) 유무가 아니라 실제 바이너리 타입인지 본다(Node에서는 Buffer = ArrayBuffer 뷰)
+  const binary = pcm instanceof ArrayBuffer || ArrayBuffer.isView(pcm);
+  const len = binary ? pcm.byteLength : -1;
   if (len <= 0 || len > VOICE_MAX_BYTES || len % 2 !== 0) return false;
   return Number.isInteger(rate) && rate >= 8000 && rate <= 48000;
 }

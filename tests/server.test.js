@@ -260,7 +260,7 @@ test("새로고침한 폰은 원래 자리를 다시 받는다", async () => {
   assert.equal((await ask(other, EVENTS.PHONE_JOIN, { code, slot: 0 })).slot, 3, "남이 쓰는 자리는 못 받음");
 });
 
-test("펭귄 효과음: 자리와 함께 TV로, 1초에 1번", async () => {
+test("펭귄 효과음: 자리와 함께 TV로, 연타는 1번만", async () => {
   const { tv, phones } = await roomWithPhones(2);
   const got = [];
   tv.on(EVENTS.EFFECT, m => got.push(m));
@@ -270,12 +270,13 @@ test("펭귄 효과음: 자리와 함께 TV로, 1초에 1번", async () => {
   assert.deepEqual(got, [{ slot: 1, type: "squawk" }]);
 });
 
-test("목소리: 검사 통과한 PCM만 TV로, 2초에 1번", async () => {
+test("목소리: 검사 통과한 PCM만 TV로, 연속 전송은 1번만", async () => {
   const { tv, phones } = await roomWithPhones(1);
   const got = [];
   tv.on(EVENTS.VOICE, m => got.push(m));
   phones[0].emit(EVENTS.VOICE, { pcm: new Int16Array(3).buffer.slice(0, 5), rate: 16000 }); // 홀수 바이트
   phones[0].emit(EVENTS.VOICE, { pcm: "not binary", rate: 16000 });
+  phones[0].emit(EVENTS.VOICE, { pcm: { byteLength: 2, junk: "x".repeat(1000) }, rate: 16000 }); // 위조 객체
   const pcm = new Int16Array(16000);
   pcm[0] = 1234;
   phones[0].emit(EVENTS.VOICE, { pcm: pcm.buffer, rate: 16000 });
@@ -288,6 +289,15 @@ test("목소리: 검사 통과한 PCM만 TV로, 2초에 1번", async () => {
   const back = toInt16(got[0].pcm);
   assert.equal(back.length, 16000);
   assert.equal(back[0], 1234);
+});
+
+test("5번째 폰은 펭귄을 같이 쓴다(자리 0~3 안에서)", async () => {
+  const { tv, phones } = await roomWithPhones(5);
+  assert.deepEqual(phones.slice(0, 4).map(p => p.joined.slot), [0, 1, 2, 3]);
+  assert.ok(phones[4].joined.slot >= 0 && phones[4].joined.slot < 4);
+  const play = next(tv, EVENTS.PLAY);
+  phones[4].emit(EVENTS.SHAKE, { intensity: 0.5 });
+  assert.equal((await play).slot, phones[4].joined.slot);
 });
 
 test("입장 안 한 소켓의 효과음·목소리는 무시", async () => {
