@@ -304,14 +304,42 @@ test("◀ ▶ 고르기: 캐릭터가 바뀌고 TV 목록·연주·목소리에 
     { slot: 0, character: 2 },
     { slot: 1, character: 1 },
   ]);
-  const r2 = await ask(phones[0], EVENTS.CHOOSE, { dir: 1 }); // 바로 또 → 연타 제한
-  assert.equal(r2.character, 2);
+  // 연타: ack를 기다리지 않고 두 번 연달아 → 하나만 반영(서버 간격 제한)
+  await new Promise(r => setTimeout(r, 250));
+  const [a, b] = await Promise.all([ask(phones[0], EVENTS.CHOOSE, { dir: 1 }), ask(phones[0], EVENTS.CHOOSE, { dir: 1 })]);
+  assert.deepEqual([a.character, b.character], [3, 3], "두 번째는 무시");
   const bad = await ask(phones[1], EVENTS.CHOOSE, { dir: 5 });
   assert.equal(bad.character, 1, "이상한 방향은 무시");
   const play = next(tv, EVENTS.PLAY);
   phones[0].emit(EVENTS.SHAKE, { intensity: 0.5 });
   const m = await play;
-  assert.deepEqual([m.slot, m.character], [0, 2]);
+  assert.deepEqual([m.slot, m.character], [0, 3]);
+  const effect = next(tv, EVENTS.EFFECT);
+  phones[0].emit(EVENTS.EFFECT, {});
+  assert.deepEqual(await effect, { slot: 0, character: 3 });
+  const voice = next(tv, EVENTS.VOICE);
+  phones[0].emit(EVENTS.VOICE, { pcm: new Int16Array(8000).buffer, rate: 16000 });
+  const v = await voice;
+  assert.deepEqual([v.slot, v.character], [0, 3]);
+});
+
+test("고른 뒤 새로 들어온 폰도 같은 캐릭터를 받지 않는다", async () => {
+  const { code, phones } = await roomWithPhones(1); // 캐릭터 0
+  await ask(phones[0], EVENTS.CHOOSE, { dir: -1 }); // → 7(고양이)
+  const p = await client();
+  const res = await ask(p, EVENTS.PHONE_JOIN, { code, character: 7 });
+  assert.notEqual(res.character, 7);
+  assert.equal(res.character, 1, "자리 1 기본 펭귄");
+});
+
+test("TV 없는 방에서는 고르기가 안 된다", async () => {
+  const tv = await client();
+  const { code } = await ask(tv, EVENTS.TV_CREATE, {});
+  const p = await client();
+  await ask(p, EVENTS.PHONE_JOIN, { code });
+  tv.close();
+  await until(() => server.rooms.getRoom(code).tvId === null);
+  assert.deepEqual(await ask(p, EVENTS.CHOOSE, { dir: 1 }), { character: null });
 });
 
 test("새로고침한 폰은 고른 캐릭터를 다시 받는다", async () => {

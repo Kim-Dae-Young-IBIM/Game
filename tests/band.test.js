@@ -1,5 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import {
   CHARACTERS,
   CHARACTER_COUNT,
@@ -79,4 +81,17 @@ test("멜로디는 6음 안에서 순서대로 돌고 처음으로 돌아온다"
   assert.equal(m.next(), MELODY[0]);
   for (const n of MELODY) assert.ok(n >= 0 && n < NOTE_COUNT);
   for (const ins of MELODIC) assert.ok(CHARACTERS.some(c => c.instrument === ins), ins);
+});
+
+test("캐릭터마다 그림(깨어 있음·졸음·얼굴)과 소리 파일이 있다", () => {
+  const assets = fileURLToPath(new URL("../assets/", import.meta.url));
+  for (const c of CHARACTERS) {
+    for (const f of [`${c.art}.svg`, `${c.art}-sleep.svg`, `face-${c.art}.svg`]) {
+      assert.ok(existsSync(assets + "animals/" + f), f);
+    }
+    const sounds = MELODIC.includes(c.instrument)
+      ? Array.from({ length: NOTE_COUNT }, (_, i) => `${c.instrument}-${i}.wav`)
+      : [`${c.instrument}.wav`];
+    for (const f of [...sounds, `${c.effect}.wav`]) assert.ok(existsSync(assets + "sounds/" + f), f);
+  }
 });

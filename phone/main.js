@@ -302,7 +302,7 @@ function choose(dir) {
   if (!state.joined || now - lastChooseAt < CHOOSE_MIN_MS) return;
   lastChooseAt = now;
   socket.timeout(3000).emit(EVENTS.CHOOSE, { dir }, (err, res) => {
-    if (err || !res) return;
+    if (err || !res || res.character === state.character) return; // 안 바뀌었으면(연타 제한·고를 동물 없음) 그대로
     applyCharacter(res.character);
     animal.classList.remove("bounce");
     void animal.offsetWidth;
@@ -310,6 +310,12 @@ function choose(dir) {
   });
   if (typeof navigator.vibrate === "function") navigator.vibrate(10);
 }
+// 그림을 미리 불러 둔다(처음 바꿀 때 잠깐 비어 보이지 않게)
+CHARACTERS.forEach(c => {
+  new Image().src = "/animals/" + c.art + ".svg";
+  new Image().src = "/animals/face-" + c.art + ".svg";
+});
+
 [
   ["prev", -1],
   ["next", 1],

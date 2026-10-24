@@ -283,26 +283,23 @@ function perform(slot, character, intensity) {
 }
 
 // 자리(폰)마다 따로 박자 보정: 같은 박자에 온 흔들림은 자리별로 가장 센 것 하나 → 여러 악기가 겹쳐 합주가 된다
-const queuedCharacter = [0, 1, 2, 3]; // 자리별로 박자를 기다리는 흔들림의 캐릭터
+// 소리는 그 자리에 "서 있는" 캐릭터로 낸다: 5번째 폰부터 자리를 같이 쓸 때도 화면과 소리가 어긋나지 않게
 const beatQueues = Array.from({ length: SLOT_COUNT }, (_, slot) =>
-  createBeatQueue({ onBeat: v => perform(slot, queuedCharacter[slot], v), schedule: (fn, ms) => setTimeout(fn, ms), bpm: BPM })
+  createBeatQueue({ onBeat: v => perform(slot, state.stage[slot], v), schedule: (fn, ms) => setTimeout(fn, ms), bpm: BPM })
 );
 
 const slotOf = msg => (msg && isValidSlot(msg.slot) ? msg.slot : 0);
-// 메시지에 캐릭터가 없으면(예전 폰) 그 자리에 서 있는 캐릭터
-const characterOf = (msg, slot) => (msg && isValidCharacter(msg.character) ? msg.character : state.stage[slot]);
+const characterOf = slot => state.stage[slot];
 
 function onPlay(msg) {
   const intensity = msg && typeof msg.intensity === "number" ? msg.intensity : 0.5;
   const slot = slotOf(msg);
-  const character = characterOf(msg, slot);
   if (!state.started) {
     debug.received(intensity, 0);
-    return perform(slot, character, intensity); // 시작 전: 움직임만(소리 잠금 상태)
+    return perform(slot, characterOf(slot), intensity); // 시작 전: 움직임만(소리 잠금 상태)
   }
   const now = performance.now();
   debug.received(intensity, Math.round(nearestBeat(now, beatOrigin, BPM).delay));
-  queuedCharacter[slot] = character;
   beatQueues[slot](intensity, now, beatOrigin);
 }
 
@@ -314,7 +311,7 @@ function playEffect(character) {
 function onEffect(msg) {
   const slot = slotOf(msg);
   state.effects++;
-  playEffect(characterOf(msg, slot));
+  playEffect(characterOf(slot));
   if (stage) stage.squawk(slot);
 }
 
@@ -341,7 +338,7 @@ function onVoice(msg) {
   const samples = int16ToFloat(toInt16(msg.pcm));
   if (!samples.length || !(msg.rate > 0)) return;
   const slot = slotOf(msg);
-  const pitch = CHARACTERS[characterOf(msg, slot)].voicePitch; // 곰은 낮게, 토끼는 높게
+  const pitch = CHARACTERS[characterOf(slot)].voicePitch; // 곰은 낮게, 토끼는 높게
   const ctx = Howler.ctx;
   const source = ctx.createBufferSource();
   source.buffer = makeBuffer(ctx, samples, msg.rate);
@@ -383,6 +380,9 @@ function showRoom(code, token) {
 
 const hex = c => "#" + ("000000" + c.toString(16)).slice(-6);
 
+const SWAP_SOUND_MIN_MS = 800;
+const lastSwapSoundAt = [-Infinity, -Infinity, -Infinity, -Infinity];
+
 function showPlayers(msg) {
   state.players = (msg && msg.count) || 0;
   state.slots = msg && Array.isArray(msg.slots) ? msg.slots.filter(isValidSlot) : [];
@@ -405,8 +405,15 @@ function showPlayers(msg) {
     d.style.background = hex(CHARACTERS[characters[slot]].color);
     playersEl.appendChild(d);
   });
-  // 캐릭터가 바뀐 자리는 "펑" 하고 바뀌며 자기 소리를 한 번 낸다
-  if (stage) stage.setPlayers(state.slots, characters).forEach(slot => playEffect(characters[slot]));
+  // 캐릭터가 바뀐 자리는 "펑" 하고 바뀌며 자기 소리를 한 번 낸다(◀ ▶ 연타해도 자리마다 0.8초에 1번)
+  if (stage) {
+    const now = performance.now();
+    stage.setPlayers(state.slots, characters).forEach(slot => {
+      if (now - lastSwapSoundAt[slot] < SWAP_SOUND_MIN_MS) return;
+      lastSwapSoundAt[slot] = now;
+      playEffect(characters[slot]);
+    });
+  }
 }
 
 let tvToken = null;

@@ -307,7 +307,7 @@ function quack() {
     const dur = 0.17;
     let phase = 0;
     for (let i = start; i < Math.min(out.length, start + len(dur)); i++) {
-      const t = i / RATE;
+      const t = (i - start) / RATE; // 이 꽥 안에서의 시각(파일 처음 기준이 아님)
       const f = (330 - 60 * (t / dur)) * pitch;
       phase += (TAU * f) / RATE;
       let v = 0;
