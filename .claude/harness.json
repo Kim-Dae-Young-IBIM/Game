@@ -1,0 +1,11 @@
+{
+  "version": 3,
+  "packs": [],
+  "forbidden": [],
+  "checks": [],
+  "verify": {
+    "command": "",
+    "localOnly": false,
+    "maxRetries": 3
+  }
+}
