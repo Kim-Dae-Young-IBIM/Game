@@ -5,14 +5,23 @@ import { EVENTS, isValidRoomCode } from "../shared/protocol.js";
 import { createShakeDetector, magnitude, SHAKE_THRESHOLD } from "../shared/shake.js";
 import { installErrorReporter } from "../shared/error-report.js";
 import { createPhoneDebug, isDebug } from "./debug.js";
+import { isValidSlot } from "../shared/band.js";
+import { createVoiceRecorder, isVoiceSupported } from "./voice.js";
 
 const TAP_INTENSITY = 0.7; // 센서가 없을 때 탭 한 번의 세기
+const EFFECT_MIN_MS = 1000; // 꽥 버튼: 1초에 1번(서버도 같은 제한)
+const VOICE_MIN_MS = 2000; // 말하기: 2초에 1번(서버도 같은 제한)
+const SLOT_KEY = "band.slot"; // 새로고침해도 같은 펭귄
 const NO_SENSOR_MS = 2500; // 이 시간 동안 센서 값이 없으면 탭으로 대신한다
 
 // 테스트·디버그용 상태(Playwright가 읽는다)
 const state = (window.__phone = {
   code: null,
   joined: false,
+  slot: null, // 내 펭귄 자리(0~3)
+  effects: 0,
+  voices: 0,
+  mic: "-", // 마이크 상태(진단 화면 표시용)
   shakes: 0,
   tapFallback: false,
   permission: "-", // 센서 권한 결과(진단 화면 표시용)
@@ -45,10 +54,33 @@ const socket = io();
 let debug = { sample() {}, shake() {}, error() {} };
 installErrorReporter(socket, "phone", message => debug.error(message));
 
+function savedSlot() {
+  try {
+    const n = parseInt(sessionStorage.getItem(SLOT_KEY), 10);
+    return isValidSlot(n) ? n : undefined;
+  } catch (e) {
+    return undefined;
+  }
+}
+
+// 입장. 성공하면 { ok, slot, instrument }, 실패하면 null
 function join(code) {
+  const slot = isValidSlot(state.slot) ? state.slot : savedSlot();
   return new Promise(resolve => {
-    socket.timeout(5000).emit(EVENTS.PHONE_JOIN, { code }, (err, res) => resolve(!err && res && res.ok));
+    socket.timeout(5000).emit(EVENTS.PHONE_JOIN, { code, slot }, (err, res) => resolve(!err && res && res.ok ? res : null));
   });
+}
+
+// 배정된 펭귄 그림으로 바꾼다
+function applySlot(slot) {
+  if (!isValidSlot(slot)) return;
+  state.slot = slot;
+  animal.src = "/animals/penguin-" + (slot + 1) + ".svg";
+  try {
+    sessionStorage.setItem(SLOT_KEY, String(slot));
+  } catch (e) {
+    // 저장소를 못 써도 동작에는 지장 없음
+  }
 }
 
 socket.on("connect", () => {
@@ -56,8 +88,9 @@ socket.on("connect", () => {
   $("offline").classList.add("hidden");
   // 와이파이가 끊겼다 돌아오면 자동으로 다시 입장
   if (state.joined && state.code) {
-    join(state.code).then(ok => {
-      if (!ok) backToJoin();
+    join(state.code).then(res => {
+      if (!res) return backToJoin();
+      applySlot(res.slot);
     });
   }
 });
@@ -193,6 +226,9 @@ document.addEventListener("keydown", e => {
 // ---------- 시작 ----------
 function backToJoin() {
   state.joined = false;
+  micPressed = false;
+  micBtn.classList.remove("recording");
+  if (recorder) recorder.release(); // 방이 닫히면 마이크도 끈다
   state.code = null;
   playScreen.classList.add("hidden");
   joinScreen.classList.remove("hidden");
@@ -218,9 +254,10 @@ goBtn.addEventListener("click", () => {
   requestWakeLock();
 
   goBtn.classList.add("waiting");
-  Promise.all([permission, join(code)]).then(([granted, ok]) => {
+  Promise.all([permission, join(code)]).then(([granted, res]) => {
     goBtn.classList.remove("waiting");
-    if (!ok) return wrongCode();
+    if (!res) return wrongCode();
+    applySlot(res.slot);
     state.code = code;
     state.joined = true;
     // iOS "흔들어서 실행 취소" 창 방지: 입력칸 포커스·입력 기록을 없앤다
@@ -236,6 +273,92 @@ goBtn.addEventListener("click", () => {
       if (!motionSeen) enableTapFallback();
     }, NO_SENSOR_MS);
   });
+});
+
+// ---------- 꽥 버튼: TV에서 펭귄 효과음 ----------
+const squawkBtn = $("squawk");
+let lastEffectAt = 0;
+squawkBtn.addEventListener("pointerdown", e => {
+  e.preventDefault();
+  const now = performance.now();
+  if (!state.joined || now - lastEffectAt < EFFECT_MIN_MS) return;
+  lastEffectAt = now;
+  state.effects++;
+  socket.emit(EVENTS.EFFECT, {});
+  squawkBtn.classList.remove("pop");
+  void squawkBtn.offsetWidth;
+  squawkBtn.classList.add("pop");
+  setTimeout(() => squawkBtn.classList.remove("pop"), 200);
+  if (typeof navigator.vibrate === "function") navigator.vibrate([20, 40, 20]);
+});
+
+// ---------- 누르고 말하기: 누른 채 말하고 떼면 TV에서 펭귄 목소리로 ----------
+const micBtn = $("mic");
+let micPressed = false;
+let lastVoiceAt = 0;
+
+function sendVoice(result) {
+  micBtn.classList.remove("recording");
+  if (!result) return; // 너무 짧음(실수로 누름)
+  lastVoiceAt = performance.now();
+  state.voices++;
+  socket.emit(EVENTS.VOICE, result);
+  micBtn.classList.add("sent");
+  setTimeout(() => micBtn.classList.remove("sent"), 600);
+}
+
+const recorder = isVoiceSupported() ? createVoiceRecorder({ onAutoStop: sendVoice }) : null;
+if (!recorder) {
+  micBtn.classList.add("disabled");
+  state.mic = "미지원";
+}
+
+micBtn.addEventListener("pointerdown", e => {
+  e.preventDefault();
+  if (!recorder || !state.joined || micBtn.classList.contains("disabled")) return;
+  if (performance.now() - lastVoiceAt < VOICE_MIN_MS) return;
+  micPressed = true;
+  try {
+    micBtn.setPointerCapture(e.pointerId); // 손가락이 조금 움직여도 계속 누른 것으로
+  } catch (err) {
+    // 지원하지 않으면 무시
+  }
+  recorder.wake(); // iOS: 탭 안에서 오디오를 깨워야 한다
+  recorder
+    .prepare()
+    .then(() => {
+      state.mic = "켜짐(" + recorder.audioState + ")";
+      // 처음엔 권한 창 때문에 손을 뗐을 수 있다 → 아직 누르고 있을 때만 녹음
+      if (!micPressed) return;
+      recorder.start();
+      micBtn.classList.add("recording");
+      if (typeof navigator.vibrate === "function") navigator.vibrate(15);
+    })
+    .catch(err => {
+      const name = err && err.name ? err.name : String(err);
+      state.mic = "오류: " + name;
+      // 권한 거부만 회색으로 막는다(아이 화면엔 실패 표시 없음). 통화 중 같은 일시 오류는 다음에 다시 시도.
+      if (name === "NotAllowedError" || name === "SecurityError") micBtn.classList.add("disabled");
+    });
+});
+
+function micRelease() {
+  if (recorder) recorder.wake(); // iOS: 손을 뗄 때(탭 완료)도 오디오를 깨운다 — 다음 녹음을 위해
+  if (!micPressed) return;
+  micPressed = false;
+  if (recorder && recorder.recording) sendVoice(recorder.stop());
+}
+micBtn.addEventListener("pointerup", micRelease);
+micBtn.addEventListener("pointercancel", micRelease);
+micBtn.addEventListener("lostpointercapture", micRelease);
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden" && recorder) {
+    micPressed = false;
+    micBtn.classList.remove("recording");
+    recorder.release(); // 화면을 떠나면 마이크를 끈다
+    state.mic = "꺼짐";
+  }
 });
 
 // ---------- 진단 화면(?debug) ----------

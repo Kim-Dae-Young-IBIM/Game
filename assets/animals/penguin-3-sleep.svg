@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- 흔들흔들 펭귄 밴드: 직접 그린 오리지널 캐릭터 (ribbon · xylophone · 졸음) -->
+  
+  <ellipse cx="210" cy="476" rx="40" ry="17" fill="#ff9f1c"/>
+  <ellipse cx="302" cy="476" rx="40" ry="17" fill="#ff9f1c"/>
+  <g transform="translate(0 330)"><ellipse cx="150" cy="0" rx="30" ry="86" fill="#263347" stroke="#7d8fb3" stroke-width="5" transform="translate(0 0) rotate(-35 150 0)"/><ellipse cx="362" cy="0" rx="30" ry="86" fill="#263347" stroke="#7d8fb3" stroke-width="5" transform="translate(0 0) rotate(35 362 0)"/></g>
+  <ellipse cx="256" cy="300" rx="140" ry="178" fill="#263347" stroke="#7d8fb3" stroke-width="6"/>
+  <ellipse cx="256" cy="335" rx="100" ry="135" fill="#f8f9fb"/>
+  <ellipse cx="256" cy="212" rx="106" ry="80" fill="#f8f9fb"/>
+  <path d="M202 206 Q220 220 238 206" fill="none" stroke="#1d1d1d" stroke-width="7" stroke-linecap="round"/>
+       <path d="M274 206 Q292 220 310 206" fill="none" stroke="#1d1d1d" stroke-width="7" stroke-linecap="round"/>
+  <ellipse cx="190" cy="242" rx="18" ry="11" fill="#ff8fa3" opacity="0.75"/>
+  <ellipse cx="322" cy="242" rx="18" ry="11" fill="#ff8fa3" opacity="0.75"/>
+  <path d="M234 232 Q256 220 278 232 Q256 266 234 232 Z" fill="#ff9f1c" stroke="#e07b00" stroke-width="3"/>
+  
+  <path d="M300 118 L250 84 L252 150 Z" fill="#ffbe0b" stroke="#e0a100" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M300 118 L350 84 L348 150 Z" fill="#ffbe0b" stroke="#e0a100" stroke-width="4" stroke-linejoin="round"/>
+  <circle cx="300" cy="118" r="16" fill="#ffd166" stroke="#e0a100" stroke-width="4"/>
+  
+  <rect x="138" y="440" width="236" height="16" rx="6" fill="#8d5524"/>
+  <rect x="138" y="384" width="236" height="12" rx="6" fill="#8d5524"/>
+  <rect x="148" y="370" width="30" height="92" rx="6" fill="#ff595e"/><rect x="186" y="374" width="30" height="84" rx="6" fill="#ff924c"/><rect x="224" y="378" width="30" height="76" rx="6" fill="#ffca3a"/><rect x="262" y="382" width="30" height="68" rx="6" fill="#8ac926"/><rect x="300" y="386" width="30" height="60" rx="6" fill="#1982c4"/><rect x="338" y="390" width="30" height="52" rx="6" fill="#6a4c93"/>
+  <line x1="170" y1="300" x2="214" y2="366" stroke="#8d5524" stroke-width="8" stroke-linecap="round"/>
+  <line x1="342" y1="300" x2="300" y2="366" stroke="#8d5524" stroke-width="8" stroke-linecap="round"/>
+  <circle cx="216" cy="368" r="13" fill="#ff595e"/><circle cx="298" cy="368" r="13" fill="#1982c4"/>
+</svg>

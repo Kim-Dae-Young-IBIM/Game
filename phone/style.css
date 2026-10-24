@@ -96,12 +96,65 @@ body {
 }
 
 #play {
-  background: radial-gradient(circle at 50% 45%, #fff3b0 0%, #ffd166 70%);
+  background: radial-gradient(circle at 50% 40%, #e0f4ff 0%, #8ecae6 75%);
+  justify-content: space-between;
+  padding-bottom: env(safe-area-inset-bottom);
 }
 #animal {
+  flex: 1 1 auto;
+  min-height: 0;
   width: 92vmin;
-  height: 92vmin;
+  max-height: 64vh;
+  margin-top: 2vh;
+  object-fit: contain;
   pointer-events: auto;
+}
+
+/* 아래 큰 버튼 2개(아이 대상: 최소 120px) */
+#controls {
+  display: flex;
+  justify-content: space-around;
+  width: 100%;
+  padding: 2vh 0 4vh;
+}
+.big-btn.round {
+  width: 150px;
+  height: 150px;
+  touch-action: none; /* 길게 눌러도 확대·선택·메뉴가 뜨지 않게 */
+}
+#squawk {
+  background: #263347;
+  box-shadow: 0 10px 0 #111a28;
+}
+#squawk:active,
+#squawk.pop {
+  transform: translateY(6px) scale(1.05);
+  box-shadow: 0 4px 0 #111a28;
+}
+#mic {
+  background: #e63946;
+  box-shadow: 0 10px 0 #a4161a;
+}
+#mic.recording {
+  transform: scale(1.12);
+  animation: rec 0.8s ease-in-out infinite;
+}
+@keyframes rec {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(230, 57, 70, 0.7);
+  }
+  50% {
+    box-shadow: 0 0 0 30px rgba(230, 57, 70, 0);
+  }
+}
+#mic.sent {
+  background: #2a9d8f;
+  box-shadow: 0 10px 0 #1d6f65;
+}
+#mic.disabled {
+  filter: grayscale(1);
+  opacity: 0.5;
 }
 #animal.bounce {
   animation: bounce 0.35s ease-out;

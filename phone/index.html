@@ -7,7 +7,7 @@
     <meta name="theme-color" content="#ffd166" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
-    <title>흔들흔들 동물 밴드</title>
+    <title>흔들흔들 펭귄 밴드</title>
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
@@ -35,9 +35,30 @@
       </button>
     </main>
 
-    <!-- 2) 연주: 동물 그림을 크게. 흔들면 TV에서 소리가 난다. -->
+    <!-- 2) 연주: 내 펭귄을 크게. 흔들면 TV에서 연주, 아래 버튼은 꽥·말하기 -->
     <main id="play" class="screen hidden">
-      <img id="animal" src="/animals/cat.svg" alt="" draggable="false" />
+      <img id="animal" src="/animals/penguin-1.svg" alt="" draggable="false" />
+      <div id="controls">
+        <!-- 펭귄 효과음: 누르면 TV에서 "꽥꽥" -->
+        <button id="squawk" class="big-btn round" aria-label="꽥">
+          <svg viewBox="0 0 100 100" aria-hidden="true">
+            <ellipse cx="50" cy="52" rx="34" ry="30" fill="#f8f9fb" />
+            <ellipse cx="38" cy="46" rx="5" ry="6" fill="#1d1d1d" />
+            <ellipse cx="62" cy="46" rx="5" ry="6" fill="#1d1d1d" />
+            <path d="M38 58 Q50 50 62 58 Q50 80 38 58 Z" fill="#ff9f1c" />
+            <path d="M84 20 l6 -8 M90 32 l10 -3 M76 12 l1 -10" stroke="#fff" stroke-width="5" stroke-linecap="round" />
+          </svg>
+        </button>
+        <!-- 누르고 말하기: 누른 채 말하고 떼면 TV에서 펭귄 목소리로 -->
+        <button id="mic" class="big-btn round" aria-label="말하기">
+          <svg viewBox="0 0 100 100" aria-hidden="true">
+            <rect x="38" y="16" width="24" height="44" rx="12" fill="#fff" />
+            <path d="M28 46 Q28 70 50 70 Q72 70 72 46" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round" />
+            <rect x="46" y="70" width="8" height="14" fill="#fff" />
+            <rect x="34" y="82" width="32" height="7" rx="3" fill="#fff" />
+          </svg>
+        </button>
+      </div>
       <div id="offline" class="hidden" aria-hidden="true">
         <svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="28" fill="#e63946" /><rect x="16" y="28" width="32" height="8" rx="4" fill="#fff" /></svg>
       </div>

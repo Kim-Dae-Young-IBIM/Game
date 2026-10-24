@@ -8,6 +8,8 @@ import { createRoomManager } from "./rooms.js";
 import { formatClientLog } from "./client-log.js";
 import { createFailLimiter, clientIp } from "./limits.js";
 import { EVENTS, clampIntensity } from "../shared/protocol.js";
+import { PENGUINS } from "../shared/band.js";
+import { isValidVoice } from "../shared/pcm.js";
 
 const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
 
@@ -81,7 +83,8 @@ export function createGameServer({ staticDir, tvGraceMs = 60000, log = console.l
           res.end();
         }
   );
-  const io = new Server(httpServer, { cors: { origin: true } });
+  // 목소리(최대 400KB)가 들어가도록 하되, 그보다 큰 메시지는 받지 않는다
+  const io = new Server(httpServer, { cors: { origin: true }, maxHttpBufferSize: 500000 });
   const rooms = createRoomManager();
   const closeTimers = new Map(); // code -> timeout
 
@@ -89,9 +92,19 @@ export function createGameServer({ staticDir, tvGraceMs = 60000, log = console.l
   const MAX_JOIN_FAILS = 20; // 소켓당 틀린 코드 허용 횟수(코드 무차별 대입 방지)
   const ipFails = createFailLimiter(ipJoinFails); // IP당 틀린 코드 제한(다시 접속해도 유지)
   const LOGS_PER_SEC = 5; // 소켓당 기기 기록 출력 상한(터미널 폭주 방지)
+  // 폰은 보낸 시각, 서버는 받은 시각 기준이라 네트워크 흔들림만큼 서버 간격을 조금 짧게 둔다
+  const EFFECT_MIN_INTERVAL_MS = 800; // 펭귄 효과음 버튼(폰은 1초에 1번)
+  const VOICE_MIN_INTERVAL_MS = 1500; // 목소리(폰은 2초에 1번)
 
   const playerCount = room => {
-    if (room.tvId) io.to(room.tvId).emit(EVENTS.PLAYERS, { count: room.phones.size });
+    if (room.tvId) io.to(room.tvId).emit(EVENTS.PLAYERS, { count: room.phones.size, slots: rooms.slotsOf(room) });
+  };
+
+  // 입장한 폰이고 TV가 있을 때만 { room, slot }
+  const phoneInRoom = socketId => {
+    const entry = rooms.roomOf(socketId);
+    if (!entry || entry.role !== "phone" || !entry.room || !entry.room.tvId) return null;
+    return { room: entry.room, slot: entry.room.phones.get(socketId) };
   };
 
   function scheduleClose(room) {
@@ -99,7 +112,7 @@ export function createGameServer({ staticDir, tvGraceMs = 60000, log = console.l
     const timer = setTimeout(() => {
       closeTimers.delete(room.code);
       if (room.tvId) return;
-      for (const id of room.phones) io.to(id).emit(EVENTS.ROOM_CLOSED);
+      for (const id of room.phones.keys()) io.to(id).emit(EVENTS.ROOM_CLOSED);
       rooms.deleteRoom(room.code);
     }, tvGraceMs);
     closeTimers.set(room.code, timer);
@@ -116,6 +129,8 @@ export function createGameServer({ staticDir, tvGraceMs = 60000, log = console.l
 
   io.on("connection", socket => {
     let lastShakeAt = 0;
+    let lastEffectAt = 0;
+    let lastVoiceAt = 0;
     let joinFails = 0;
     const ip = clientIp(socket.handshake);
     let logWindowAt = 0;
@@ -175,26 +190,48 @@ export function createGameServer({ staticDir, tvGraceMs = 60000, log = console.l
       if (!(current && current.role === "phone" && current.room && current.room.code === code)) {
         leave(socket.id);
       }
-      const room = rooms.joinRoom(code, socket.id);
+      const room = rooms.joinRoom(code, socket.id, payload && payload.slot);
       if (!room) {
         joinFails++;
         ipFails.fail(ip);
         return ack({ ok: false });
       }
-      ack({ ok: true, animal: room.animal });
+      const slot = room.phones.get(socket.id);
+      ack({ ok: true, slot, instrument: PENGUINS[slot].instrument });
       playerCount(room);
     });
 
     socket.on(EVENTS.SHAKE, payload => {
-      const entry = rooms.roomOf(socket.id);
-      if (!entry || entry.role !== "phone" || !entry.room || !entry.room.tvId) return;
+      const p = phoneInRoom(socket.id);
+      if (!p) return;
       const now = Date.now();
       if (now - lastShakeAt < SHAKE_MIN_INTERVAL_MS) return;
       lastShakeAt = now;
-      io.to(entry.room.tvId).emit(EVENTS.PLAY, {
+      io.to(p.room.tvId).emit(EVENTS.PLAY, {
         intensity: clampIntensity(payload && payload.intensity),
+        slot: p.slot,
         phoneId: socket.id,
       });
+    });
+
+    // 펭귄 효과음 버튼(내용 없음, 종류는 서버가 정한다)
+    socket.on(EVENTS.EFFECT, () => {
+      const p = phoneInRoom(socket.id);
+      if (!p) return;
+      const now = Date.now();
+      if (now - lastEffectAt < EFFECT_MIN_INTERVAL_MS) return;
+      lastEffectAt = now;
+      io.to(p.room.tvId).emit(EVENTS.EFFECT, { slot: p.slot, type: "squawk" });
+    });
+
+    // 누르고 말하기: 16bit PCM을 검사해 TV로 그대로 전달
+    socket.on(EVENTS.VOICE, payload => {
+      const p = phoneInRoom(socket.id);
+      if (!p || !isValidVoice(payload)) return;
+      const now = Date.now();
+      if (now - lastVoiceAt < VOICE_MIN_INTERVAL_MS) return;
+      lastVoiceAt = now;
+      io.to(p.room.tvId).emit(EVENTS.VOICE, { slot: p.slot, pcm: payload.pcm, rate: payload.rate });
     });
 
     socket.on("disconnect", () => leave(socket.id));
@@ -221,7 +258,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const staticDir = process.env.SOCKET_ONLY ? undefined : join(ROOT, "dist");
   const server = createGameServer({ staticDir });
   server.listen(port).then(p => {
-    console.log(`흔들흔들 동물 밴드 서버: http://localhost:${p}/  (TV: /tv/, 폰: /phone/)`);
+    console.log(`흔들흔들 펭귄 밴드 서버: http://localhost:${p}/  (TV: /tv/, 폰: /phone/)`);
     if (!staticDir) console.log("소켓 전용 모드(개발). 화면은 vite 개발 서버에서 엽니다.");
   });
 }

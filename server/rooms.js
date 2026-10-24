@@ -1,6 +1,7 @@
-// 방 코드 관리. 방 하나 = TV 1대 + 폰 N대. 소켓 없이 동작해 단위 테스트가 쉽다.
+// 방 코드 관리. 방 하나 = TV 1대 + 폰 N대(폰마다 펭귄 자리 slot). 소켓 없이 동작해 단위 테스트가 쉽다.
 import { randomBytes } from "node:crypto";
-import { ANIMALS, isValidRoomCode } from "../shared/protocol.js";
+import { isValidRoomCode } from "../shared/protocol.js";
+import { pickSlot } from "../shared/band.js";
 
 const CODE_MIN = 1000;
 const CODE_MAX = 9999;
@@ -8,7 +9,7 @@ const CODE_MAX = 9999;
 const newToken = () => randomBytes(16).toString("hex");
 
 export function createRoomManager({ random = Math.random, token = newToken } = {}) {
-  const rooms = new Map(); // code -> { code, tvId, tvToken, phones: Set, animal }
+  const rooms = new Map(); // code -> { code, tvId, tvToken, phones: Map(socketId -> slot) }
   const bySocket = new Map(); // socketId -> { code, role: "tv" | "phone" }
 
   function newCode() {
@@ -32,16 +33,19 @@ export function createRoomManager({ random = Math.random, token = newToken } = {
       return { room: existing, previousTvId };
     }
     const code = isValidRoomCode(preferredCode) && !existing ? preferredCode : newCode();
-    const room = { code, tvId, tvToken: token(), phones: new Set(), animal: ANIMALS[0] };
+    const room = { code, tvId, tvToken: token(), phones: new Map() };
     rooms.set(code, room);
     bySocket.set(tvId, { code, role: "tv" });
     return { room, previousTvId: null };
   }
 
-  function joinRoom(code, phoneId) {
+  // 폰 입장. preferredSlot: 새로고침 전에 쓰던 자리(비어 있으면 그대로 준다). 이미 들어와 있으면 자리 유지.
+  function joinRoom(code, phoneId, preferredSlot) {
     const room = isValidRoomCode(code) ? rooms.get(code) : undefined;
     if (!room) return null;
-    room.phones.add(phoneId);
+    if (!room.phones.has(phoneId)) {
+      room.phones.set(phoneId, pickSlot(room.phones.values(), preferredSlot, room.phones.size));
+    }
     bySocket.set(phoneId, { code, role: "phone" });
     return room;
   }
@@ -61,7 +65,7 @@ export function createRoomManager({ random = Math.random, token = newToken } = {
   function deleteRoom(code) {
     const room = rooms.get(code);
     if (!room) return;
-    for (const id of room.phones) bySocket.delete(id);
+    for (const id of room.phones.keys()) bySocket.delete(id);
     if (room.tvId) bySocket.delete(room.tvId);
     rooms.delete(code);
   }
@@ -72,6 +76,8 @@ export function createRoomManager({ random = Math.random, token = newToken } = {
     removeSocket,
     deleteRoom,
     getRoom: code => rooms.get(code),
+    // 방에서 쓰는 자리들(중복 없이, 작은 순)
+    slotsOf: room => Array.from(new Set(room.phones.values())).sort((a, b) => a - b),
     roomOf: socketId => {
       const entry = bySocket.get(socketId);
       return entry ? { room: rooms.get(entry.code), role: entry.role } : null;

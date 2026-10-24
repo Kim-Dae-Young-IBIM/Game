@@ -105,7 +105,9 @@ export function createPhoneDebug({ enabled, socket, state, getThreshold, setThre
         "  권한함수 " + yes(typeof DeviceMotionEvent !== "undefined" && typeof DeviceMotionEvent.requestPermission === "function") +
         "  권한 " + state.permission + "  탭대체 " + yes(state.tapFallback),
       "샘플 " + rate.rate(now) + "Hz  |a| " + d.last.toFixed(1) + "  1초최대 " + peak.peak(now).toFixed(1) + " m/s²",
-      "흔들기 " + state.shakes + "회  세기 " + (d.lastIntensity === null ? "-" : d.lastIntensity.toFixed(2)),
+      "펭귄 " + (state.slot === null ? "-" : state.slot + 1) + "  흔들기 " + state.shakes + "회  세기 " +
+        (d.lastIntensity === null ? "-" : d.lastIntensity.toFixed(2)),
+      "꽥 " + state.effects + "회  목소리 " + state.voices + "회  마이크 " + state.mic,
       "화면유지 " + state.wakeLock + "  진동 " + yes(typeof navigator.vibrate === "function") +
         "  전체화면 " + (fs ? "켜짐" : hasFs ? "지원" : "미지원"),
       "소켓 " + transport + "  왕복 " + (d.rtt === null ? "-" : d.rtt + "ms") + "  방 " + (state.code || "-"),

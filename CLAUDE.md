@@ -5,12 +5,13 @@
 이 저장소는 한 가지 작업에 묶이지 않는다. 개발, 문서, 분석, 데이터 정리 등 어떤 작업이든 할 수 있다. 작업 종류별 규칙은 `.claude/rules/`에 파일 경로 단위로 두며, 해당 파일을 다룰 때만 적용된다.
 
 ## 1. 저장소 개요
-- **흔들흔들 동물 밴드**: 5살·2살 아이가 폰을 흔들면 TV 속 동물이 악기를 연주하는 가족 합주 웹 게임. 앱 설치 없이 웹으로만 동작.
+- **흔들흔들 펭귄 밴드**(구 동물 밴드): 5살·2살 아이가 폰을 흔들면 TV 속 펭귄이 악기를 연주하는 가족 합주 웹 게임. 앱 설치 없이 웹으로만 동작.
 - TV: LG 75QNED90(webOS 6.5 내장 브라우저, Chromium 79 수준) → 무대·소리 재생.
 - 컨트롤러: Galaxy S26(Chrome/삼성 인터넷), iPhone 16 Pro(Safari). TV 화면의 QR 또는 4자리 방 코드로 접속.
 - 구조: Node.js + Socket.IO 서버가 방 코드로 TV 1대 + 폰 N대를 묶는다. TV는 Phaser 3 + Howler.js, 폰은 순수 HTML/JS(DeviceMotionEvent).
 - 운영: 집에 PC가 없어 서버는 **Render 무료 플랜**(`render.yaml`, 싱가포르)에서 돈다. `main`에 병합하면 자동 배포. HTTPS는 Render가 제공. 15분 미사용 시 잠들고 깨는 데 약 1분. 세팅 순서는 `docs/setup.md`.
-- 현재 단계: 1단계 MVP(고양이 드러머 1마리).
+- 현재 단계: 2단계 — 오리지널 펭귄 4마리(폰마다 1마리: 드럼·탬버린·실로폰·마라카스), 배경 반주, 폰의 꽥 버튼, 누르고 말하기(펭귄 목소리로 TV 재생).
+- **캐릭터·음악은 직접 만든 것만** 쓴다(저장소·사이트가 공개). 기존 캐릭터(뽀로로 등)나 그 음악·닮은 그림은 넣지 않는다.
 - **기술 결정(위 스택, 방 구조, HTTPS 방식)을 바꾸려면 먼저 사용자에게 묻는다.**
 
 ## 2. 자주 쓰는 명령
@@ -20,18 +21,18 @@
 - `npm start`: `dist/`를 서빙하는 실서버(3000). `/` → TV, `/p` → 폰.
 - `npm test`: 단위·통합 테스트(`node --test`). 빌드 후 실행하면 `dist` 문법 호환 검사도 한다.
 - `npm run tunnel`: `ngrok http 3000`(PC에서 직접 돌릴 때만. 운영은 Render라 필요 없음).
-- `npm run sounds`: `assets/sounds/*.wav` 합성음 다시 생성.
+- `npm run sounds`: `assets/sounds/*.wav` 합성음(악기·꽥·배경 반주) 다시 생성. `npm run art`: `assets/animals/penguin-*.svg` 다시 생성.
 - 진단 모드: TV 주소에 `?debug`(예: `/tv/?debug`) → TV·폰(QR에 자동 포함)에 진단 화면, 5초마다 요약이 서버 기록(Render 대시보드 Logs, 로컬은 터미널)에 `[tv 1234] report: …` 형태로 찍힌다. 기기 오류는 진단 모드가 아니어도 항상 `error:`로 찍힌다.
 - 완료 검증: `npm run build && npm test`(Stop 훅이 자동 실행).
 
 ## 3. 폴더 구조
 - `server/`: `index.js` HTTP 정적 서빙 + Socket.IO 중계 + `/healthz`, `rooms.js` 방 코드 관리(순수 로직), `client-log.js` 기기 기록 정리, `limits.js` IP당 틀린 코드 제한(공개 인터넷 대비).
-- `tv/`: TV 페이지. `main.js` Phaser 무대, Howler 소리, 박자 시계, QR.
-- `phone/`: 폰 컨트롤러 페이지. 코드 입력, 센서 권한, 흔들림 → 전송, 화면 보호.
-- `shared/`: 서버·TV·폰 공용 순수 로직. `shake.js` 흔들림 판정, `beat.js` 박자 보정, `protocol.js` 이벤트 이름, `diag.js` 진단 계산. (`error-report.js`만 브라우저 전용)
+- `tv/`: TV 페이지. `main.js` Phaser 무대(펭귄 4마리), Howler 소리·배경 반주, 펭귄별 박자 보정, 꽥·목소리 재생, QR.
+- `phone/`: 폰 컨트롤러 페이지. 코드 입력, 센서 권한, 흔들림 → 전송, 화면 보호, 꽥 버튼, `voice.js` 누르고 말하기 녹음.
+- `shared/`: 서버·TV·폰 공용 순수 로직. `shake.js` 흔들림 판정, `beat.js` 박자 보정, `protocol.js` 이벤트 이름, `band.js` 펭귄 자리·악기·실로폰 멜로디, `pcm.js` 목소리 변환(16kHz 16bit), `diag.js` 진단 계산. (`error-report.js`만 브라우저 전용)
 - `tv/debug.js`, `phone/debug.js`: `?debug` 진단 화면(부모·개발용이라 글자 허용).
 - `assets/`: 정적 자원(빌드 시 루트로 복사). `animals/*.svg`, `sounds/*.wav`(합성음, 라이선스 문제 없음).
-- `scripts/`: `dev.mjs` 개발 서버 동시 실행, `gen-sounds.mjs` 효과음 합성.
+- `scripts/`: `dev.mjs` 개발 서버 동시 실행, `gen-sounds.mjs` 소리 합성, `gen-art.mjs` 펭귄 그림 생성.
 - `tests/`: `node --test` 테스트. `docs/`: 실기기 체크리스트, 하네스 기록.
 
 ## 4. 공통 작업 규칙
@@ -56,6 +57,7 @@
 - 작업마다 사용자가 정한 완료 기준을 따른다.
 - 결과물은 끝내기 전에 직접 열거나 실행해 확인한다.
 - 자동 검증이 필요하면 `.claude/harness.json`의 `verify`에 등록한다(현재 `npm run build && npm test`).
+- **2단계 완료 기준**: 위 1단계 기준 + 펭귄 자리·멜로디·목소리 변환·효과음/목소리 서버 제한 단위 테스트, 폰 여러 대 + 가짜 마이크 시뮬레이션, 체크리스트 2단계 항목.
 - **1단계 완료 기준**
   - `npm run build && npm test` 통과
   - 흔들림 판정 로직 단위 테스트(가짜 가속도 데이터) — `tests/shake.test.js`
