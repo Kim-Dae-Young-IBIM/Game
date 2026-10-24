@@ -5,11 +5,12 @@ import { Howl, Howler } from "howler";
 import { io } from "socket.io-client";
 import QRCode from "qrcode";
 import { EVENTS } from "../shared/protocol.js";
-import { DEFAULT_BPM, nearestBeatDelay, beatIndex } from "../shared/beat.js";
+import { DEFAULT_BPM, beatIndex, createBeatQueue } from "../shared/beat.js";
 
 const BPM = DEFAULT_BPM;
 const STRONG_SHAKE = 0.7; // 이 세기 이상이면 드럼과 함께 야옹
 const CODE_KEY = "band.roomCode";
+const TOKEN_KEY = "band.tvToken"; // 재접속 시 같은 방을 넘겨받기 위한 비밀값
 
 // 테스트·디버그용 상태(Playwright가 읽는다)
 const state = (window.__band = { code: null, started: false, plays: 0, lastIntensity: 0, players: 0 });
@@ -138,15 +139,20 @@ new Phaser.Game({
 });
 
 // ---------- 흔들림 수신 → 박자 보정 후 연주 ----------
+function perform(intensity) {
+  state.plays++;
+  state.lastIntensity = intensity;
+  if (state.started) playSound(intensity);
+  if (stage) stage.perform(intensity);
+}
+
+// 같은 박자의 흔들림은 가장 센 것 하나로 묶어 한 번만 친다(shared/beat.js)
+const beatQueue = createBeatQueue({ onBeat: perform, schedule: (fn, ms) => setTimeout(fn, ms), bpm: BPM });
+
 function onPlay(msg) {
   const intensity = msg && typeof msg.intensity === "number" ? msg.intensity : 0.5;
-  const delay = state.started ? nearestBeatDelay(performance.now(), beatOrigin, BPM) : 0;
-  setTimeout(() => {
-    state.plays++;
-    state.lastIntensity = intensity;
-    if (state.started) playSound(intensity);
-    if (stage) stage.perform(intensity);
-  }, delay);
+  if (!state.started) return perform(intensity); // 시작 전: 움직임만(소리 잠금 상태)
+  beatQueue(intensity, performance.now(), beatOrigin);
 }
 
 // ---------- 방 코드·QR ----------
@@ -155,10 +161,11 @@ const qrEl = document.getElementById("qr");
 const playersEl = document.getElementById("players");
 const card = document.getElementById("join-card");
 
-function showRoom(code) {
+function showRoom(code, token) {
   state.code = code;
   try {
     sessionStorage.setItem(CODE_KEY, code);
+    sessionStorage.setItem(TOKEN_KEY, token);
   } catch (e) {
     // 저장소를 못 써도 동작에는 지장 없음
   }
@@ -182,15 +189,21 @@ function showPlayers(count) {
 }
 
 const socket = io();
+let tvToken = null;
 socket.on("connect", () => {
-  let saved;
+  let savedCode, savedToken;
   try {
-    saved = sessionStorage.getItem(CODE_KEY) || undefined;
+    savedCode = sessionStorage.getItem(CODE_KEY) || undefined;
+    savedToken = sessionStorage.getItem(TOKEN_KEY) || undefined;
   } catch (e) {
-    saved = undefined;
+    savedCode = savedToken = undefined;
   }
-  // 재접속 시 같은 코드를 요청 → 폰이 다시 입력하지 않아도 이어진다
-  socket.emit(EVENTS.TV_CREATE, { code: state.code || saved }, res => showRoom(res.code));
+  // 재접속·새로고침 시 같은 코드+토큰을 보내 방을 넘겨받는다 → 폰은 다시 입력하지 않아도 이어진다
+  socket.emit(EVENTS.TV_CREATE, { code: state.code || savedCode, token: tvToken || savedToken }, res => {
+    if (!res || !res.code) return;
+    tvToken = res.token;
+    showRoom(res.code, res.token);
+  });
 });
 socket.on(EVENTS.PLAYERS, msg => showPlayers(msg.count));
 socket.on(EVENTS.PLAY, onPlay);

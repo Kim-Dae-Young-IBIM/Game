@@ -1,11 +1,14 @@
 // 방 코드 관리. 방 하나 = TV 1대 + 폰 N대. 소켓 없이 동작해 단위 테스트가 쉽다.
+import { randomBytes } from "node:crypto";
 import { ANIMALS, isValidRoomCode } from "../shared/protocol.js";
 
 const CODE_MIN = 1000;
 const CODE_MAX = 9999;
 
-export function createRoomManager({ random = Math.random } = {}) {
-  const rooms = new Map(); // code -> { code, tvId, phones: Set, animal }
+const newToken = () => randomBytes(16).toString("hex");
+
+export function createRoomManager({ random = Math.random, token = newToken } = {}) {
+  const rooms = new Map(); // code -> { code, tvId, tvToken, phones: Set, animal }
   const bySocket = new Map(); // socketId -> { code, role: "tv" | "phone" }
 
   function newCode() {
@@ -16,18 +19,23 @@ export function createRoomManager({ random = Math.random } = {}) {
     throw new Error("빈 방 코드를 찾지 못했습니다");
   }
 
-  // TV가 방을 만든다. preferredCode가 TV 없는 기존 방이면 다시 붙고(재접속), 비어 있으면 그 코드로 만든다.
-  function createRoom(tvId, preferredCode) {
-    let room = isValidRoomCode(preferredCode) ? rooms.get(preferredCode) : undefined;
-    if (room && room.tvId === null) {
-      room.tvId = tvId;
-    } else {
-      const code = isValidRoomCode(preferredCode) && !room ? preferredCode : newCode();
-      room = { code, tvId, phones: new Set(), animal: ANIMALS[0] };
-      rooms.set(code, room);
+  // TV가 방을 만든다. (code, token)이 기존 방과 맞으면 그 방을 넘겨받는다(재접속).
+  // 와이파이가 잠깐 끊기면 서버는 옛 소켓을 아직 살아 있다고 보므로, tvId가 남아 있어도 토큰이 맞으면 넘겨받는다.
+  // 반환: { room, previousTvId } — previousTvId는 넘겨받기 전 TV 소켓(있으면 끊어야 함)
+  function createRoom(tvId, preferredCode, tvToken) {
+    const existing = isValidRoomCode(preferredCode) ? rooms.get(preferredCode) : undefined;
+    if (existing && typeof tvToken === "string" && tvToken === existing.tvToken) {
+      const previousTvId = existing.tvId !== tvId ? existing.tvId : null;
+      if (previousTvId) bySocket.delete(previousTvId);
+      existing.tvId = tvId;
+      bySocket.set(tvId, { code: existing.code, role: "tv" });
+      return { room: existing, previousTvId };
     }
-    bySocket.set(tvId, { code: room.code, role: "tv" });
-    return room;
+    const code = isValidRoomCode(preferredCode) && !existing ? preferredCode : newCode();
+    const room = { code, tvId, tvToken: token(), phones: new Set(), animal: ANIMALS[0] };
+    rooms.set(code, room);
+    bySocket.set(tvId, { code, role: "tv" });
+    return { room, previousTvId: null };
   }
 
   function joinRoom(code, phoneId) {
@@ -38,7 +46,7 @@ export function createRoomManager({ random = Math.random } = {}) {
     return room;
   }
 
-  // 소켓이 끊기면 호출. TV가 끊기면 방은 남겨 두고 tvId만 비운다(재접속 대기).
+  // 소켓이 끊기거나 다른 방으로 옮길 때 호출. TV가 나가면 방은 남겨 두고 tvId만 비운다(재접속 대기).
   function removeSocket(socketId) {
     const entry = bySocket.get(socketId);
     if (!entry) return null;
@@ -54,6 +62,7 @@ export function createRoomManager({ random = Math.random } = {}) {
     const room = rooms.get(code);
     if (!room) return;
     for (const id of room.phones) bySocket.delete(id);
+    if (room.tvId) bySocket.delete(room.tvId);
     rooms.delete(code);
   }
 

@@ -26,37 +26,43 @@ const REDIRECTS = { "/": "/tv/", "/tv": "/tv/", "/p": "/phone/", "/phone": "/pho
 
 function staticHandler(staticDir) {
   const base = resolve(staticDir);
-  return async (req, res) => {
-    const url = new URL(req.url, "http://localhost");
-    if (REDIRECTS[url.pathname]) {
-      res.writeHead(302, { Location: REDIRECTS[url.pathname] + url.search });
-      return res.end();
-    }
-    let path;
+  const send = (res, status, headers, body) => {
+    if (res.headersSent) return res.end();
+    res.writeHead(status, headers);
+    res.end(body);
+  };
+  async function handle(req, res) {
+    let url, path;
     try {
+      // 외부 입력: "//", 잘못된 % 인코딩 등은 400 (예외가 새면 서버가 죽는다)
+      url = new URL(req.url, "http://localhost");
       path = decodeURIComponent(url.pathname);
     } catch {
-      res.writeHead(400);
-      return res.end();
+      return send(res, 400);
     }
+    if (REDIRECTS[url.pathname]) return send(res, 302, { Location: REDIRECTS[url.pathname] + url.search });
+    if (path.includes("\0")) return send(res, 400);
     if (path.endsWith("/")) path += "index.html";
     const file = resolve(join(base, path));
-    if (file !== base && !file.startsWith(base + sep)) {
-      res.writeHead(403);
-      return res.end();
-    }
+    if (file !== base && !file.startsWith(base + sep)) return send(res, 403);
     try {
       if (!(await stat(file)).isFile()) throw new Error("not a file");
       const body = await readFile(file);
-      res.writeHead(200, {
-        "Content-Type": MIME[extname(file).toLowerCase()] || "application/octet-stream",
-        "Cache-Control": path.endsWith(".html") ? "no-cache" : "public, max-age=3600",
-      });
-      res.end(body);
+      send(
+        res,
+        200,
+        {
+          "Content-Type": MIME[extname(file).toLowerCase()] || "application/octet-stream",
+          "Cache-Control": path.endsWith(".html") ? "no-cache" : "public, max-age=3600",
+        },
+        body
+      );
     } catch {
-      res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
-      res.end("Not found");
+      send(res, 404, { "Content-Type": "text/plain; charset=utf-8" }, "Not found");
     }
+  }
+  return (req, res) => {
+    handle(req, res).catch(() => send(res, 500));
   };
 }
 
@@ -75,52 +81,91 @@ export function createGameServer({ staticDir, tvGraceMs = 60000 } = {}) {
   const rooms = createRoomManager();
   const closeTimers = new Map(); // code -> timeout
 
-  const playerCount = room => io.to(room.tvId).emit(EVENTS.PLAYERS, { count: room.phones.size });
+  const SHAKE_MIN_INTERVAL_MS = 100; // 폰 1대당 흔들림 전달 최소 간격(폭주 방지, 폰 디바운스는 150ms)
+  const MAX_JOIN_FAILS = 20; // 소켓당 틀린 코드 허용 횟수(코드 무차별 대입 방지)
+
+  const playerCount = room => {
+    if (room.tvId) io.to(room.tvId).emit(EVENTS.PLAYERS, { count: room.phones.size });
+  };
+
+  function scheduleClose(room) {
+    clearTimeout(closeTimers.get(room.code));
+    const timer = setTimeout(() => {
+      closeTimers.delete(room.code);
+      if (room.tvId) return;
+      for (const id of room.phones) io.to(id).emit(EVENTS.ROOM_CLOSED);
+      rooms.deleteRoom(room.code);
+    }, tvGraceMs);
+    closeTimers.set(room.code, timer);
+  }
+
+  // 소켓의 기존 소속을 정리한다(끊김, 또는 같은 소켓이 다시 만들기·입장할 때).
+  function leave(socketId) {
+    const removed = rooms.removeSocket(socketId);
+    if (!removed) return;
+    const { room, role } = removed;
+    if (role === "phone") playerCount(room);
+    else if (!room.tvId) scheduleClose(room);
+  }
 
   io.on("connection", socket => {
+    let lastShakeAt = 0;
+    let joinFails = 0;
+
     socket.on(EVENTS.TV_CREATE, (payload, ack) => {
       if (typeof ack !== "function") return;
-      const preferred = payload && typeof payload.code === "string" ? payload.code : undefined;
-      const room = rooms.createRoom(socket.id, preferred);
-      clearTimeout(closeTimers.get(room.code));
-      closeTimers.delete(room.code);
-      ack({ code: room.code });
-      playerCount(room);
+      const p = payload || {};
+      try {
+        leave(socket.id);
+        const { room, previousTvId } = rooms.createRoom(
+          socket.id,
+          typeof p.code === "string" ? p.code : undefined,
+          typeof p.token === "string" ? p.token : undefined
+        );
+        // 끊긴 줄 모르고 남아 있던 옛 TV 소켓은 정리
+        if (previousTvId) {
+          const old = io.sockets.sockets.get(previousTvId);
+          if (old) old.disconnect(true);
+        }
+        clearTimeout(closeTimers.get(room.code));
+        closeTimers.delete(room.code);
+        ack({ code: room.code, token: room.tvToken });
+        playerCount(room);
+      } catch (e) {
+        ack({ error: "unavailable" });
+      }
     });
 
     socket.on(EVENTS.PHONE_JOIN, (payload, ack) => {
       if (typeof ack !== "function") return;
-      const room = rooms.joinRoom(payload && payload.code, socket.id);
-      if (!room) return ack({ ok: false });
+      if (joinFails >= MAX_JOIN_FAILS) return ack({ ok: false });
+      const code = payload && payload.code;
+      const current = rooms.roomOf(socket.id);
+      if (!(current && current.role === "phone" && current.room && current.room.code === code)) {
+        leave(socket.id);
+      }
+      const room = rooms.joinRoom(code, socket.id);
+      if (!room) {
+        joinFails++;
+        return ack({ ok: false });
+      }
       ack({ ok: true, animal: room.animal });
-      if (room.tvId) playerCount(room);
+      playerCount(room);
     });
 
     socket.on(EVENTS.SHAKE, payload => {
       const entry = rooms.roomOf(socket.id);
       if (!entry || entry.role !== "phone" || !entry.room || !entry.room.tvId) return;
+      const now = Date.now();
+      if (now - lastShakeAt < SHAKE_MIN_INTERVAL_MS) return;
+      lastShakeAt = now;
       io.to(entry.room.tvId).emit(EVENTS.PLAY, {
         intensity: clampIntensity(payload && payload.intensity),
         phoneId: socket.id,
       });
     });
 
-    socket.on("disconnect", () => {
-      const removed = rooms.removeSocket(socket.id);
-      if (!removed) return;
-      const { room, role } = removed;
-      if (role === "phone") {
-        if (room.tvId) playerCount(room);
-        return;
-      }
-      const timer = setTimeout(() => {
-        closeTimers.delete(room.code);
-        if (room.tvId) return;
-        for (const id of room.phones) io.to(id).emit(EVENTS.ROOM_CLOSED);
-        rooms.deleteRoom(room.code);
-      }, tvGraceMs);
-      closeTimers.set(room.code, timer);
-    });
+    socket.on("disconnect", () => leave(socket.id));
   });
 
   return {

@@ -4,6 +4,8 @@ dist/
 # 비밀값·인증서: 커밋 금지
 .env
 .env.*
+.envrc
+ngrok.yml
 *.pem
 *.key
 *.crt

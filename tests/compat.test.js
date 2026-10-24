@@ -47,6 +47,21 @@ function walk(node, found) {
   }
 }
 
+// 함수 밖의 await(최상위 await, Chrome 89)를 찾는다. 함수 안으로는 내려가지 않는다.
+const FUNCTION_TYPES = new Set(["FunctionDeclaration", "FunctionExpression", "ArrowFunctionExpression"]);
+function hasTopLevelAwait(node) {
+  if (!node || typeof node !== "object") return false;
+  if (Array.isArray(node)) return node.some(hasTopLevelAwait);
+  if (FUNCTION_TYPES.has(node.type)) return false;
+  if (node.type === "AwaitExpression" || (node.type === "ForOfStatement" && node.await)) return true;
+  for (const key in node) {
+    if (key === "parent") continue;
+    const v = node[key];
+    if (v && typeof v === "object" && hasTopLevelAwait(v)) return true;
+  }
+  return false;
+}
+
 const files = existsSync(distAssets) ? readdirSync(distAssets).filter(f => f.endsWith(".js")) : [];
 
 test("빌드 JS에 Chromium 79 미지원 문법이 없다", { skip: files.length === 0 && "dist 없음(빌드 전)" }, () => {
@@ -56,11 +71,7 @@ test("빌드 JS에 Chromium 79 미지원 문법이 없다", { skip: files.length
     assert.equal(result.errors.length, 0, `${f} 파싱 오류`);
     const found = new Set();
     walk(result.program, found);
-    // 최상위 await (Chrome 89)
-    for (const stmt of result.program.body) {
-      const s = JSON.stringify(stmt.type === "ExpressionStatement" ? stmt.expression.type : "");
-      if (s === '"AwaitExpression"') found.add("최상위 await (Chrome 89)");
-    }
+    if (hasTopLevelAwait(result.program)) found.add("최상위 await (Chrome 89)");
     assert.deepEqual([...found], [], `${f}: ${[...found].join(", ")}`);
   }
 });
@@ -70,4 +81,9 @@ test("검사기 자체 확인: 미지원 문법을 실제로 잡아낸다", () =
   const found = new Set();
   walk(parseSync("t.js", code, { sourceType: "module" }).program, found);
   assert.equal(found.size, 5, [...found].join(", "));
+  const parse = c => parseSync("t.js", c, { sourceType: "module" }).program;
+  assert.equal(hasTopLevelAwait(parse("const x = await f();")), true);
+  assert.equal(hasTopLevelAwait(parse("for await (const a of b) {}")), true);
+  assert.equal(hasTopLevelAwait(parse("async function g() { const x = await f(); }")), false);
+  assert.equal(hasTopLevelAwait(parse("const h = async () => { await f(); };")), false);
 });

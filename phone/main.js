@@ -130,6 +130,7 @@ function onMotion(e) {
 }
 
 function shake(intensity) {
+  if (!state.joined) return; // 방이 닫혀 입장 화면으로 돌아간 뒤에는 무시
   state.shakes++;
   socket.emit(EVENTS.SHAKE, { intensity });
   // 화면 속 동물도 같이 통통
@@ -186,6 +187,9 @@ goBtn.addEventListener("click", () => {
     if (!ok) return wrongCode();
     state.code = code;
     state.joined = true;
+    // iOS "흔들어서 실행 취소" 창 방지: 입력칸 포커스·입력 기록을 없앤다
+    codeInput.blur();
+    codeInput.value = "";
     joinScreen.classList.add("hidden");
     playScreen.classList.remove("hidden");
     guardBack();

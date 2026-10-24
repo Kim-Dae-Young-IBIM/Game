@@ -36,17 +36,18 @@
 - **아이 대상 UI**: 글자 없이 그림·소리로만 안내. 버튼 최소 크기 120px. (부모가 입력하는 방 코드 숫자만 예외)
 - **2살 입력은 '흔들기'만**. 틀리는 경우가 없어야 한다(실패 상태·오답 화면 없음).
 - **iOS 센서 권한**: 시작 버튼 탭 핸들러 안에서 `DeviceMotionEvent.requestPermission()`을 await 전에 먼저 호출. (최신 Chromium에도 이 함수가 있어 "granted"가 아닐 수 있으므로 devicemotion은 항상 듣고, 값이 안 오면 탭으로 대체)
+- **서버 입력은 믿지 않는다**: 소켓·HTTP 핸들러는 외부 입력 파싱을 try 안에서 하고, 예외가 핸들러 밖으로 새지 않게 한다(새면 서버가 죽는다).
 - **흔들림 판정**: 가속도(중력 포함) 크기 약 12m/s² 초과 = 1회, 150ms 디바운스, 세기 → 볼륨(0.3~1.0). 세기는 넘은 순간이 아니라 정점 기준(최대 80ms 대기). 구현은 `shared/shake.js`.
-- **박자 보정**: 소리는 가장 가까운 박자에 맞춰 재생(`shared/beat.js`, 기본 BPM 100).
+- **박자 보정**: 소리는 가장 가까운 박자에 맞춰 재생. 같은 박자에 온 흔들림은 가장 센 것 하나로 묶는다(`shared/beat.js`, 기본 BPM 100).
 - **폰 화면**: 전체화면(지원 기기만), Wake Lock, 확대·뒤로가기 방지, 진동은 지원 기기만(iPhone 없음).
 - TV 코드는 Chromium 79에서 돌아야 한다. 세부 규칙은 `.claude/rules/code-style.md`.
 
 ## 5. 금지 사항
 - 반드시 막아야 하는 것은 `.claude/harness.json`의 `forbidden`에 등록한다. 이 문서의 지시는 요청일 뿐 보장이 아니다.
-- **인증서·.env 커밋 금지**: `.gitignore`(`.env*`, `*.pem`, `*.key`, `*.crt` 등), `forbidden`(개인키·토큰 내용 패턴), `settings.json` deny(`git add -f`).
+- **인증서·.env 커밋 금지**: `.gitignore`(`.env`, `.env.*`, `.envrc`, `ngrok.yml`, `*.pem`, `*.key`, `*.crt` 등), `forbidden`(개인키, ngrok authtoken·API 키 내용 패턴), `settings.json` deny(`git add -f` 변형).
 - **`.claude/hooks/` 수정 금지**: `settings.json` deny(`Edit/Write(./.claude/hooks/**)`).
 - **승인 없는 새 의존성 추가 금지**: `settings.json` ask(`npm install <패키지>` 등). 설치는 `npm ci` 또는 인자 없는 `npm install`만.
-- 훅의 `forbidden`은 파일 내용만 검사하므로, 경로·명령 단위 금지는 `settings.json` 권한 규칙으로 강제한다.
+- 훅의 `forbidden`은 파일 내용만 검사하므로, 경로·명령 단위 금지는 `settings.json` 권한 규칙으로 강제한다. 권한 규칙은 명령 문자열 매칭이라 우회(예: Bash `sed -i`)가 가능한 **최선의 노력 수준**이다. 우회하지 않는다.
 
 ## 6. 완료 판정 기준
 - 작업마다 사용자가 정한 완료 기준을 따른다.
