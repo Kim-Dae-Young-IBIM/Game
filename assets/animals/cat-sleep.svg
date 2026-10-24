@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- 흔들흔들 동물 밴드: 직접 그린 오리지널 캐릭터 (cat · 졸음) -->
+
+  <path d="M370 380 C450 360 470 280 430 240" fill="none" stroke="#d9741a" stroke-width="26" stroke-linecap="round"/>
+  <ellipse cx="208" cy="476" rx="42" ry="17" fill="#f6a03c"/><ellipse cx="304" cy="476" rx="42" ry="17" fill="#f6a03c"/>
+  <ellipse cx="256" cy="350" rx="122" ry="132" fill="#f6a03c" stroke="#d9741a" stroke-width="6"/>
+  <ellipse cx="256" cy="372" rx="72" ry="86" fill="#ffe2b8"/>
+  <path d="M148 150 L166 40 L238 110 Z" fill="#f6a03c" stroke="#d9741a" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M364 150 L346 40 L274 110 Z" fill="#f6a03c" stroke="#d9741a" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M166 130 L176 72 L220 112 Z" fill="#ffb3c1"/><path d="M346 130 L336 72 L292 112 Z" fill="#ffb3c1"/>
+  <ellipse cx="256" cy="186" rx="128" ry="104" fill="#f6a03c" stroke="#d9741a" stroke-width="6"/>
+  <path d="M236 92 Q256 116 276 92 M226 112 Q256 140 286 112" fill="none" stroke="#d9741a" stroke-width="10" stroke-linecap="round"/>
+  <path d="M192 184 Q210 198 228 184" fill="none" stroke="#1d1d1d" stroke-width="7" stroke-linecap="round"/>
+       <path d="M284 184 Q302 198 320 184" fill="none" stroke="#1d1d1d" stroke-width="7" stroke-linecap="round"/>
+  <ellipse cx="176" cy="224" rx="18" ry="11" fill="#ff8fa3" opacity="0.75"/><ellipse cx="336" cy="224" rx="18" ry="11" fill="#ff8fa3" opacity="0.75"/>
+  <path d="M244 206 L268 206 L256 220 Z" fill="#e8577a"/>
+  <path d="M256 220 Q244 240 228 232 M256 220 Q268 240 284 232" fill="none" stroke="#2b2b2b" stroke-width="5" stroke-linecap="round"/>
+  <g stroke="#2b2b2b" stroke-width="4" stroke-linecap="round"><line x1="150" y1="200" x2="92" y2="190"/><line x1="150" y1="214" x2="90" y2="220"/><line x1="362" y1="200" x2="420" y2="190"/><line x1="362" y1="214" x2="422" y2="220"/></g>
+  <path d="M170 272 Q256 300 342 272 L342 294 Q256 322 170 294 Z" fill="#e63946"/>
+  <circle cx="256" cy="312" r="16" fill="#ffd166" stroke="#c9a227" stroke-width="4"/><line x1="248" y1="316" x2="264" y2="316" stroke="#c9a227" stroke-width="3"/>
+  <g transform="rotate(-28 118 300)"><rect x="112" y="238" width="12" height="34" rx="5" fill="#8d5524"/>
+     <path d="M74 330 Q80 260 118 262 Q156 260 162 330 Z" fill="#ffd166" stroke="#c9a227" stroke-width="5"/>
+     <circle cx="118" cy="334" r="11" fill="#c9a227"/></g><g transform="rotate(28 394 300)"><rect x="388" y="238" width="12" height="34" rx="5" fill="#8d5524"/>
+     <path d="M350 330 Q356 260 394 262 Q432 260 438 330 Z" fill="#ffd166" stroke="#c9a227" stroke-width="5"/>
+     <circle cx="394" cy="334" r="11" fill="#c9a227"/></g>
+</svg>

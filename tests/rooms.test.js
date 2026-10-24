@@ -94,13 +94,41 @@ test("폰 자리: 순서대로, 같은 폰이 다시 들어와도 유지, 원하
   const room = rooms.joinRoom(code, "a");
   rooms.joinRoom(code, "b");
   rooms.joinRoom(code, "a", 3);
-  assert.equal(room.phones.get("a"), 0, "이미 들어온 폰은 자리 유지");
-  assert.equal(room.phones.get("b"), 1);
+  assert.equal(room.phones.get("a").slot, 0, "이미 들어온 폰은 자리 유지");
+  assert.equal(room.phones.get("b").slot, 1);
   rooms.joinRoom(code, "c", 3);
-  assert.equal(room.phones.get("c"), 3);
+  assert.equal(room.phones.get("c").slot, 3);
   assert.deepEqual(rooms.slotsOf(room), [0, 1, 3]);
   rooms.removeSocket("b");
   assert.deepEqual(rooms.slotsOf(room), [0, 3]);
+});
+
+test("캐릭터: 기본은 자리 펭귄, 원하는 캐릭터, 겹치지 않게", () => {
+  const rooms = createRoomManager();
+  const { code } = rooms.createRoom("tv").room;
+  const room = rooms.joinRoom(code, "a");
+  assert.equal(room.phones.get("a").character, 0, "자리 0 → 펭귄 0");
+  rooms.joinRoom(code, "b", undefined, 5);
+  assert.deepEqual(room.phones.get("b"), { slot: 1, character: 5 }, "새로고침 전 토끼");
+  rooms.joinRoom(code, "c", undefined, 5);
+  assert.equal(room.phones.get("c").character, 2, "토끼는 b가 써서 자리 기본(펭귄 2)");
+  assert.deepEqual(rooms.playersOf(room), [
+    { slot: 0, character: 0 },
+    { slot: 1, character: 5 },
+    { slot: 2, character: 2 },
+  ]);
+});
+
+test("◀ ▶ 고르기: 남이 쓰는 캐릭터를 건너뛴다", () => {
+  const rooms = createRoomManager();
+  const { code } = rooms.createRoom("tv").room;
+  rooms.joinRoom(code, "a"); // 0
+  rooms.joinRoom(code, "b"); // 1
+  assert.equal(rooms.chooseCharacter("a", 1), 2, "1은 b가 씀");
+  assert.equal(rooms.chooseCharacter("a", -1), 0);
+  assert.equal(rooms.chooseCharacter("a", -1), 7, "왼쪽으로 돌면 고양이");
+  assert.equal(rooms.chooseCharacter("tv", 1), null, "TV는 못 고름");
+  assert.equal(rooms.chooseCharacter("nobody", 1), null);
 });
 
 test("세기 값은 0~1로 자른다", () => {

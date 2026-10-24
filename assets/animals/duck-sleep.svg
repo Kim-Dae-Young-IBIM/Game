@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- 흔들흔들 동물 밴드: 직접 그린 오리지널 캐릭터 (duck · 졸음) -->
+
+  <path d="M168 470 L232 470 L210 490 L190 490 Z" fill="#ff9f1c"/><path d="M280 470 L344 470 L322 490 L302 490 Z" fill="#ff9f1c"/>
+  <ellipse cx="256" cy="340" rx="124" ry="142" fill="#fdfdfd" stroke="#d6d6d6" stroke-width="6"/>
+  <path d="M140 300 Q256 250 372 300 L380 440 Q256 488 132 440 Z" fill="#ffd23f" stroke="#e0b000" stroke-width="5"/>
+  <line x1="256" y1="276" x2="256" y2="462" stroke="#e0b000" stroke-width="5"/>
+  <circle cx="240" cy="320" r="8" fill="#fff"/><circle cx="240" cy="370" r="8" fill="#fff"/><circle cx="240" cy="420" r="8" fill="#fff"/>
+  <ellipse cx="130" cy="350" rx="32" ry="72" fill="#ffd23f" stroke="#e0b000" stroke-width="5" transform="rotate(16 130 350)"/>
+  <ellipse cx="380" cy="300" rx="32" ry="72" fill="#ffd23f" stroke="#e0b000" stroke-width="5" transform="rotate(-50 380 300)"/>
+  <circle cx="256" cy="196" r="100" fill="#fdfdfd" stroke="#d6d6d6" stroke-width="6"/>
+  <path d="M164 118 Q256 0 348 118 Z" fill="#ffd23f" stroke="#e0b000" stroke-width="5"/>
+  <ellipse cx="256" cy="118" rx="138" ry="24" fill="#ffd23f" stroke="#e0b000" stroke-width="5"/>
+  <path d="M200 184 Q218 198 236 184" fill="none" stroke="#1d1d1d" stroke-width="7" stroke-linecap="round"/>
+       <path d="M276 184 Q294 198 312 184" fill="none" stroke="#1d1d1d" stroke-width="7" stroke-linecap="round"/>
+  <ellipse cx="184" cy="226" rx="18" ry="11" fill="#ff8fa3" opacity="0.75"/><ellipse cx="328" cy="226" rx="18" ry="11" fill="#ff8fa3" opacity="0.75"/>
+  <ellipse cx="256" cy="232" rx="56" ry="22" fill="#ff9f1c" stroke="#e07b00" stroke-width="4"/>
+  <path d="M206 234 Q256 246 306 234" fill="none" stroke="#e07b00" stroke-width="4"/>
+  <line x1="300" y1="250" x2="410" y2="226" stroke="#f4c430" stroke-width="16" stroke-linecap="round"/>
+  <path d="M404 222 L474 186 L474 286 L404 250 Z" fill="#f4c430" stroke="#c9a227" stroke-width="5" stroke-linejoin="round"/>
+  <rect x="340" y="214" width="12" height="22" rx="3" fill="#c9a227"/><rect x="362" y="210" width="12" height="22" rx="3" fill="#c9a227"/>
+</svg>

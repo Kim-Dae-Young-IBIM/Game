@@ -15,7 +15,7 @@ export function isDebug() {
   return new URLSearchParams(location.search).has("debug");
 }
 
-// getInfo(): { renderer, fps, audio, started, code, players, slots, plays, effects, voices }
+// getInfo(): { renderer, fps, audio, started, code, players, slots, characters(자리별 캐릭터), plays, effects, voices }
 export function createTvDebug({ enabled, socket, getInfo }) {
   if (!enabled) return DISABLED;
 
@@ -53,11 +53,11 @@ export function createTvDebug({ enabled, socket, getInfo }) {
       "화면       " + innerWidth + "x" + innerHeight + " @" + (window.devicePixelRatio || 1) + "  " + info.renderer + "  FPS " + info.fps,
       "오디오     " + info.audio,
       "소켓       " + transport + "  왕복 " + (d.rtt === null ? "-" : d.rtt + "ms"),
-      "방         " + (info.code || "-") + "  폰 " + info.players + "대  펭귄 [" + (info.slots || []).map(n => n + 1).join(",") + "]  시작 " + yes(info.started),
+      "방         " + (info.code || "-") + "  폰 " + info.players + "대  자리 [" + (info.slots || []).map(n => n + 1 + ":" + (info.characters ? info.characters[n] : "?")).join(",") + "]  시작 " + yes(info.started),
       "흔들기     받음 " + d.received + "  연주 " + info.plays +
         "  세기 " + (d.lastIntensity === null ? "-" : d.lastIntensity.toFixed(2)) +
         "  박자대기 " + (d.lastBeatWait === null ? "-" : d.lastBeatWait + "ms"),
-      "효과·목소리 꽥 " + (info.effects || 0) + "  목소리 " + (info.voices || 0),
+      "특별·목소리 특별 " + (info.effects || 0) + "  목소리 " + (info.voices || 0),
       "오류       " + d.errors + (d.lastError ? "  " + d.lastError : ""),
     ];
   }

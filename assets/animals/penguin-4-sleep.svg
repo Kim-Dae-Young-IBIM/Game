@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
-  <!-- 흔들흔들 펭귄 밴드: 직접 그린 오리지널 캐릭터 (headphones · maracas · 졸음) -->
-  
+  <!-- 흔들흔들 동물 밴드: 직접 그린 오리지널 캐릭터 (penguin-4 · 졸음) -->
+
   <ellipse cx="210" cy="476" rx="40" ry="17" fill="#ff9f1c"/>
   <ellipse cx="302" cy="476" rx="40" ry="17" fill="#ff9f1c"/>
   <g transform="translate(0 250)"><ellipse cx="128" cy="0" rx="30" ry="86" fill="#263347" stroke="#7d8fb3" stroke-width="5" transform="translate(0 0) rotate(40 128 0)"/><ellipse cx="384" cy="0" rx="30" ry="86" fill="#263347" stroke="#7d8fb3" stroke-width="5" transform="translate(0 0) rotate(-40 384 0)"/></g>

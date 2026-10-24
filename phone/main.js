@@ -5,20 +5,23 @@ import { EVENTS, isValidRoomCode } from "../shared/protocol.js";
 import { createShakeDetector, magnitude, SHAKE_THRESHOLD } from "../shared/shake.js";
 import { installErrorReporter } from "../shared/error-report.js";
 import { createPhoneDebug, isDebug } from "./debug.js";
-import { isValidSlot } from "../shared/band.js";
+import { CHARACTERS, isValidSlot, isValidCharacter } from "../shared/band.js";
 import { createVoiceRecorder, isVoiceSupported } from "./voice.js";
 
 const TAP_INTENSITY = 0.7; // 센서가 없을 때 탭 한 번의 세기
 const EFFECT_MIN_MS = 1000; // 꽥 버튼: 1초에 1번(서버도 같은 제한)
 const VOICE_MIN_MS = 2000; // 말하기: 2초에 1번(서버도 같은 제한)
-const SLOT_KEY = "band.slot"; // 새로고침해도 같은 펭귄
+const SLOT_KEY = "band.slot"; // 새로고침해도 같은 무대 자리
+const CHARACTER_KEY = "band.character"; // 새로고침해도 같은 캐릭터
+const CHOOSE_MIN_MS = 300; // ◀ ▶ 연타: 0.3초에 1번
 const NO_SENSOR_MS = 2500; // 이 시간 동안 센서 값이 없으면 탭으로 대신한다
 
 // 테스트·디버그용 상태(Playwright가 읽는다)
 const state = (window.__phone = {
   code: null,
   joined: false,
-  slot: null, // 내 펭귄 자리(0~3)
+  slot: null, // 내 무대 자리(0~3)
+  character: null, // 내 캐릭터(0~7)
   effects: 0,
   voices: 0,
   mic: "-", // 마이크 상태(진단 화면 표시용)
@@ -54,33 +57,50 @@ const socket = io();
 let debug = { sample() {}, shake() {}, error() {} };
 installErrorReporter(socket, "phone", message => debug.error(message));
 
-function savedSlot() {
+function saved(key, isValid) {
   try {
-    const n = parseInt(sessionStorage.getItem(SLOT_KEY), 10);
-    return isValidSlot(n) ? n : undefined;
+    const n = parseInt(sessionStorage.getItem(key), 10);
+    return isValid(n) ? n : undefined;
   } catch (e) {
     return undefined;
   }
 }
 
-// 입장. 성공하면 { ok, slot, instrument }, 실패하면 null
-function join(code) {
-  const slot = isValidSlot(state.slot) ? state.slot : savedSlot();
-  return new Promise(resolve => {
-    socket.timeout(5000).emit(EVENTS.PHONE_JOIN, { code, slot }, (err, res) => resolve(!err && res && res.ok ? res : null));
-  });
-}
-
-// 배정된 펭귄 그림으로 바꾼다
-function applySlot(slot) {
-  if (!isValidSlot(slot)) return;
-  state.slot = slot;
-  animal.src = "/animals/penguin-" + (slot + 1) + ".svg";
+function remember(key, value) {
   try {
-    sessionStorage.setItem(SLOT_KEY, String(slot));
+    sessionStorage.setItem(key, String(value));
   } catch (e) {
     // 저장소를 못 써도 동작에는 지장 없음
   }
+}
+
+// 입장. 성공하면 { ok, slot, character }, 실패하면 null
+function join(code) {
+  const slot = isValidSlot(state.slot) ? state.slot : saved(SLOT_KEY, isValidSlot);
+  const character = isValidCharacter(state.character) ? state.character : saved(CHARACTER_KEY, isValidCharacter);
+  return new Promise(resolve => {
+    socket
+      .timeout(5000)
+      .emit(EVENTS.PHONE_JOIN, { code, slot, character }, (err, res) => resolve(!err && res && res.ok ? res : null));
+  });
+}
+
+// 내 캐릭터 그림·특별 버튼 얼굴로 바꾼다
+function applyCharacter(character) {
+  if (!isValidCharacter(character)) return;
+  state.character = character;
+  const art = CHARACTERS[character].art;
+  animal.src = "/animals/" + art + ".svg";
+  $("effect-face").src = "/animals/face-" + art + ".svg";
+  remember(CHARACTER_KEY, character);
+}
+
+function applyJoin(res) {
+  if (isValidSlot(res.slot)) {
+    state.slot = res.slot;
+    remember(SLOT_KEY, res.slot);
+  }
+  applyCharacter(res.character);
 }
 
 socket.on("connect", () => {
@@ -90,7 +110,7 @@ socket.on("connect", () => {
   if (state.joined && state.code) {
     join(state.code).then(res => {
       if (!res) return backToJoin();
-      applySlot(res.slot);
+      applyJoin(res);
     });
   }
 });
@@ -257,7 +277,7 @@ goBtn.addEventListener("click", () => {
   Promise.all([permission, join(code)]).then(([granted, res]) => {
     goBtn.classList.remove("waiting");
     if (!res) return wrongCode();
-    applySlot(res.slot);
+    applyJoin(res);
     state.code = code;
     state.joined = true;
     // iOS "흔들어서 실행 취소" 창 방지: 입력칸 포커스·입력 기록을 없앤다
@@ -275,7 +295,33 @@ goBtn.addEventListener("click", () => {
   });
 });
 
-// ---------- 꽥 버튼: TV에서 펭귄 효과음 ----------
+// ---------- ◀ ▶ 캐릭터 고르기: 다른 폰이 안 쓰는 다음 동물로 ----------
+let lastChooseAt = 0;
+function choose(dir) {
+  const now = performance.now();
+  if (!state.joined || now - lastChooseAt < CHOOSE_MIN_MS) return;
+  lastChooseAt = now;
+  socket.timeout(3000).emit(EVENTS.CHOOSE, { dir }, (err, res) => {
+    if (err || !res) return;
+    applyCharacter(res.character);
+    animal.classList.remove("bounce");
+    void animal.offsetWidth;
+    animal.classList.add("bounce");
+  });
+  if (typeof navigator.vibrate === "function") navigator.vibrate(10);
+}
+[
+  ["prev", -1],
+  ["next", 1],
+].forEach(([id, dir]) => {
+  $(id).addEventListener("pointerdown", e => {
+    e.preventDefault();
+    e.stopPropagation(); // 동물 그림 탭(센서 없을 때 흔들기 대신)으로 처리되지 않게
+    choose(dir);
+  });
+});
+
+// ---------- 특별 버튼: TV에서 캐릭터 소리(꽥·어흥·뿅·야옹) ----------
 const squawkBtn = $("squawk");
 let lastEffectAt = 0;
 squawkBtn.addEventListener("pointerdown", e => {

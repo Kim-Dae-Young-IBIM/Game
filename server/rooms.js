@@ -1,7 +1,7 @@
-// 방 코드 관리. 방 하나 = TV 1대 + 폰 N대(폰마다 펭귄 자리 slot). 소켓 없이 동작해 단위 테스트가 쉽다.
+// 방 코드 관리. 방 하나 = TV 1대 + 폰 N대(폰마다 무대 자리 slot + 고른 캐릭터 character). 소켓 없이 동작해 단위 테스트가 쉽다.
 import { randomBytes } from "node:crypto";
 import { isValidRoomCode } from "../shared/protocol.js";
-import { pickSlot } from "../shared/band.js";
+import { pickSlot, pickCharacter, nextCharacter } from "../shared/band.js";
 
 const CODE_MIN = 1000;
 const CODE_MAX = 9999;
@@ -9,7 +9,7 @@ const CODE_MAX = 9999;
 const newToken = () => randomBytes(16).toString("hex");
 
 export function createRoomManager({ random = Math.random, token = newToken } = {}) {
-  const rooms = new Map(); // code -> { code, tvId, tvToken, phones: Map(socketId -> slot) }
+  const rooms = new Map(); // code -> { code, tvId, tvToken, phones: Map(socketId -> { slot, character }) }
   const bySocket = new Map(); // socketId -> { code, role: "tv" | "phone" }
 
   function newCode() {
@@ -39,12 +39,21 @@ export function createRoomManager({ random = Math.random, token = newToken } = {
     return { room, previousTvId: null };
   }
 
-  // 폰 입장. preferredSlot: 새로고침 전에 쓰던 자리(비어 있으면 그대로 준다). 이미 들어와 있으면 자리 유지.
-  function joinRoom(code, phoneId, preferredSlot) {
+  const slotsTaken = room => Array.from(room.phones.values(), p => p.slot);
+  const charactersTaken = (room, exceptId) =>
+    Array.from(room.phones.entries())
+      .filter(([id]) => id !== exceptId)
+      .map(([, p]) => p.character);
+
+  // 폰 입장. preferredSlot/preferredCharacter: 새로고침 전에 쓰던 것(비어 있으면 그대로 준다).
+  // 이미 들어와 있는 폰이면 그대로 유지. 캐릭터 기본값은 그 자리의 펭귄.
+  function joinRoom(code, phoneId, preferredSlot, preferredCharacter) {
     const room = isValidRoomCode(code) ? rooms.get(code) : undefined;
     if (!room) return null;
     if (!room.phones.has(phoneId)) {
-      room.phones.set(phoneId, pickSlot(room.phones.values(), preferredSlot, room.phones.size));
+      const slot = pickSlot(slotsTaken(room), preferredSlot, room.phones.size);
+      const character = pickCharacter(charactersTaken(room), preferredCharacter, slot);
+      room.phones.set(phoneId, { slot, character });
     }
     bySocket.set(phoneId, { code, role: "phone" });
     return room;
@@ -62,6 +71,16 @@ export function createRoomManager({ random = Math.random, token = newToken } = {
     return { room, role: entry.role };
   }
 
+  // ◀ ▶: 다른 폰이 안 쓰는 다음 캐릭터로 바꾼다. 바뀐 캐릭터(또는 null)를 돌려준다.
+  function chooseCharacter(phoneId, dir) {
+    const entry = bySocket.get(phoneId);
+    const room = entry && entry.role === "phone" ? rooms.get(entry.code) : undefined;
+    const me = room && room.phones.get(phoneId);
+    if (!me) return null;
+    me.character = nextCharacter(me.character, dir, charactersTaken(room, phoneId));
+    return me.character;
+  }
+
   function deleteRoom(code) {
     const room = rooms.get(code);
     if (!room) return;
@@ -75,9 +94,13 @@ export function createRoomManager({ random = Math.random, token = newToken } = {
     joinRoom,
     removeSocket,
     deleteRoom,
+    chooseCharacter,
     getRoom: code => rooms.get(code),
+    phoneOf: (room, phoneId) => room.phones.get(phoneId),
     // 방에서 쓰는 자리들(중복 없이, 작은 순)
-    slotsOf: room => Array.from(new Set(room.phones.values())).sort((a, b) => a - b),
+    slotsOf: room => Array.from(new Set(slotsTaken(room))).sort((a, b) => a - b),
+    // TV에 보낼 폰 목록(들어온 순서): 같은 자리를 여럿이 쓰면 TV는 먼저 들어온 폰의 캐릭터를 보여 준다
+    playersOf: room => Array.from(room.phones.values(), p => ({ slot: p.slot, character: p.character })),
     roomOf: socketId => {
       const entry = bySocket.get(socketId);
       return entry ? { room: rooms.get(entry.code), role: entry.role } : null;

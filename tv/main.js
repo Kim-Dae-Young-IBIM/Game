@@ -1,5 +1,6 @@
-// TV 무대: 방 코드·QR 표시, 시작 버튼으로 소리 잠금 해제, 펭귄 밴드 4마리가 폰 흔들기에 맞춰 연주.
-// 폰마다 펭귄 1마리(자리 slot). 효과음 버튼 → 펭귄 꽥, 누르고 말하기 → 펭귄 목소리로 재생.
+// TV 무대: 방 코드·QR 표시, 시작 버튼으로 소리 잠금 해제, 동물 밴드가 폰 흔들기에 맞춰 연주.
+// 무대 자리(slot) 4곳에 폰이 고른 캐릭터(펭귄·곰·토끼·오리·고양이)가 선다. 폰 없는 자리는 기본 펭귄이 존다.
+// 특별 버튼 → 캐릭터 소리(꽥·어흥·뿅·야옹), 누르고 말하기 → 캐릭터 목소리 높이로 재생.
 // 대상 브라우저: LG webOS 6.5(Chromium 79). 문법은 vite가 낮추지만 Web API는 79에 있는 것만 쓴다.
 import * as Phaser from "phaser";
 import { Howl, Howler } from "howler";
@@ -7,7 +8,7 @@ import { io } from "socket.io-client";
 import QRCode from "qrcode";
 import { EVENTS } from "../shared/protocol.js";
 import { DEFAULT_BPM, beatIndex, createBeatQueue, nearestBeat } from "../shared/beat.js";
-import { PENGUINS, SLOT_COUNT, isValidSlot, createMelody, XYLO_NOTES } from "../shared/band.js";
+import { CHARACTERS, SLOT_COUNT, MELODIC, NOTE_COUNT, isValidSlot, isValidCharacter, createMelody } from "../shared/band.js";
 import { toInt16, int16ToFloat, resampleLinear } from "../shared/pcm.js";
 import { installErrorReporter } from "../shared/error-report.js";
 import { createTvDebug, isDebug } from "./debug.js";
@@ -15,7 +16,6 @@ import { createTvDebug, isDebug } from "./debug.js";
 const BPM = DEFAULT_BPM;
 const BGM_VOLUME = 0.35; // 배경 반주는 악기보다 작게
 const BGM_DUCK = 0.08; // 목소리가 나올 때 반주를 줄인다
-const VOICE_PITCH = 1.3; // 펭귄 목소리: 30% 높고 빠르게
 const CODE_KEY = "band.roomCode";
 const TOKEN_KEY = "band.tvToken"; // 재접속 시 같은 방을 넘겨받기 위한 비밀값
 
@@ -26,8 +26,10 @@ const state = (window.__band = {
   plays: 0,
   lastIntensity: 0,
   lastSlot: null,
+  lastCharacter: null,
   players: 0,
   slots: [],
+  stage: [0, 1, 2, 3], // 자리별로 서 있는 캐릭터
   effects: 0,
   voices: 0,
 });
@@ -40,25 +42,27 @@ installErrorReporter(socket, "tv", message => debug.error(message));
 
 // ---------- 소리 ----------
 const howl = (name, extra) => new Howl(Object.assign({ src: ["/sounds/" + name + ".wav"], preload: true }, extra));
-const sounds = {
-  drum: howl("drum"),
-  tambourine: howl("tambourine"),
-  maracas: howl("maracas"),
-  squawk: howl("squawk"),
-  xylo: XYLO_NOTES.map(n => howl("xylo-" + n)),
-  bgm: howl("bgm", { loop: true, volume: BGM_VOLUME }),
-};
-const melodies = PENGUINS.map(() => createMelody()); // 실로폰 자리는 흔들 때마다 다음 음
+const sounds = { bgm: howl("bgm", { loop: true, volume: BGM_VOLUME }) };
+// 캐릭터마다 악기·특별 소리. 멜로디 악기(실로폰·나팔·핸드벨)는 음 6개
+CHARACTERS.forEach(c => {
+  if (!sounds[c.instrument]) {
+    sounds[c.instrument] =
+      MELODIC.indexOf(c.instrument) !== -1
+        ? Array.from({ length: NOTE_COUNT }, (_, i) => howl(c.instrument + "-" + i))
+        : howl(c.instrument);
+  }
+  if (!sounds[c.effect]) sounds[c.effect] = howl(c.effect);
+});
+const melodies = CHARACTERS.map(() => createMelody()); // 멜로디 악기는 흔들 때마다 다음 음
 
 function playOnce(sound, volume) {
   const id = sound.play();
   sound.volume(volume, id);
 }
 
-function playInstrument(slot, intensity) {
-  const instrument = PENGUINS[slot].instrument;
-  if (instrument === "xylophone") playOnce(sounds.xylo[melodies[slot].next()], intensity);
-  else playOnce(sounds[instrument], intensity);
+function playInstrument(character, intensity) {
+  const sound = sounds[CHARACTERS[character].instrument];
+  playOnce(Array.isArray(sound) ? sound[melodies[character].next()] : sound, intensity);
 }
 
 // ---------- 무대 (Phaser) ----------
@@ -72,10 +76,11 @@ class StageScene extends Phaser.Scene {
   }
 
   preload() {
-    for (let i = 0; i < SLOT_COUNT; i++) {
-      this.load.svg("p" + i, "/animals/penguin-" + (i + 1) + ".svg", { width: 512, height: 512 });
-      this.load.svg("p" + i + "s", "/animals/penguin-" + (i + 1) + "-sleep.svg", { width: 512, height: 512 });
-    }
+    // 캐릭터 c → 텍스처 "c{id}"(깨어 있음), "c{id}s"(졸음)
+    CHARACTERS.forEach(c => {
+      this.load.svg("c" + c.id, "/animals/" + c.art + ".svg", { width: 512, height: 512 });
+      this.load.svg("c" + c.id + "s", "/animals/" + c.art + "-sleep.svg", { width: 512, height: 512 });
+    });
   }
 
   create() {
@@ -97,17 +102,17 @@ class StageScene extends Phaser.Scene {
 
     this.makeTextures();
 
-    // 펭귄 4마리: 연결된 폰의 펭귄만 깨어 있다
+    // 무대 자리 4곳: 폰이 있는 자리만 깨어 있고, 폰이 고른 캐릭터가 선다
     const xs = [470, 810, 1150, 1490];
     this.penguins = xs.map((x, slot) => {
       const spot = this.add.ellipse(x, H - 170, 340, 90, 0xfff3b0, 0.12);
-      const img = this.add.image(x, H - 360, "p" + slot + "s").setScale(0.72);
-      const p = { slot, img, spot, baseY: img.y, baseScale: 0.72, awake: false, breathe: null };
+      const img = this.add.image(x, H - 360, "c" + slot + "s").setScale(0.72);
+      const p = { slot, character: slot, img, spot, baseY: img.y, baseScale: 0.72, awake: false, breathe: null, hopTween: null };
       this.breathe(p);
       return p;
     });
     stage = this;
-    this.setActiveSlots(state.slots);
+    this.setPlayers(state.slots, state.stage);
   }
 
   // 흔들 때 날아오르는 음표, 꽥 할 때 터지는 별, 말할 때 나오는 소리 물결
@@ -153,26 +158,44 @@ class StageScene extends Phaser.Scene {
     });
   }
 
-  setActiveSlots(slots) {
-    if (!this.penguins) return;
+  // slots: 폰이 있는 자리, characters: 자리별 캐릭터. 바뀐 자리만 깨우거나 "펑" 하고 바꾼다.
+  // 돌려주는 값: 캐릭터가 바뀐 자리들(특별 소리를 내기 위해)
+  setPlayers(slots, characters) {
+    if (!this.penguins) return [];
+    const swapped = [];
     this.penguins.forEach(p => {
       const awake = slots.indexOf(p.slot) !== -1;
-      if (awake === p.awake) return;
+      const character = characters[p.slot];
+      if (awake === p.awake && character === p.character) return;
+      const changed = awake && p.awake && character !== p.character;
       p.awake = awake;
-      p.img.setTexture("p" + p.slot + (awake ? "" : "s"));
+      p.character = character;
+      p.img.setTexture("c" + character + (awake ? "" : "s"));
       p.img.setAlpha(awake ? 1 : 0.7);
       p.spot.setAlpha(awake ? 0.3 : 0.12);
       this.breathe(p);
-      if (awake) this.hop(p, 60); // 깨어나며 깡충
+      if (changed) {
+        this.poof(p);
+        swapped.push(p.slot);
+      }
+      if (awake) this.hop(p, 60); // 깨어나거나 바뀌며 깡충
     });
+    return swapped;
   }
 
+  // 캐릭터가 바뀔 때 "펑": 흰 별이 크게 터진다
+  poof(p) {
+    const b = this.add.image(p.img.x, p.baseY, "burst").setScale(0.5).setAlpha(0.95);
+    this.tweens.add({ targets: b, scale: 3, alpha: 0, angle: 30, duration: 450, ease: "Quad.easeOut", onComplete: () => b.destroy() });
+  }
+
+  // 깡충: 크기·높이 트윈만 멈추고 다시 시작한다(말하기·꽥의 고개 흔들기 트윈은 그대로 둔다)
   hop(p, height) {
     if (p.breathe) p.breathe.stop();
-    this.tweens.killTweensOf(p.img);
-    p.img.setScale(p.baseScale).setY(p.baseY).setAngle(0);
+    if (p.hopTween) p.hopTween.stop();
+    p.img.setScale(p.baseScale).setY(p.baseY);
     const s = p.baseScale;
-    this.tweens.chain({
+    p.hopTween = this.tweens.chain({
       targets: p.img,
       tweens: [
         { scaleX: s * 1.12, scaleY: s * 0.86, duration: 70, ease: "Quad.easeOut" },
@@ -215,12 +238,12 @@ class StageScene extends Phaser.Scene {
     }
   }
 
-  // 꽥: 좌우로 흔들며 뛰고, 부리 앞에서 별이 터진다
+  // 특별 버튼: 좌우로 흔들며 뛰고, 얼굴 앞에서 별이 터진다
   squawk(slot) {
     const p = this.penguins[slot];
     this.hop(p, 50);
     this.tweens.add({ targets: p.img, angle: { from: -12, to: 12 }, duration: 80, yoyo: true, repeat: 3, onComplete: () => p.img.setAngle(0) });
-    const burst = this.add.image(p.img.x, p.baseY - 40, "burst").setTint(PENGUINS[slot].color).setScale(0.3);
+    const burst = this.add.image(p.img.x, p.baseY - 40, "burst").setTint(CHARACTERS[p.character].color).setScale(0.3);
     this.tweens.add({ targets: burst, scale: 1.6, alpha: 0, angle: 45, duration: 500, ease: "Quad.easeOut", onComplete: () => burst.destroy() });
   }
 
@@ -231,7 +254,7 @@ class StageScene extends Phaser.Scene {
     this.tweens.add({ targets: p.img, angle: { from: -5, to: 5 }, duration: 130, yoyo: true, repeat: repeats, onComplete: () => p.img.setAngle(0) });
     for (let i = 0; i < Math.min(8, repeats); i++) {
       this.time.delayedCall(i * 300, () => {
-        const w = this.add.image(p.img.x + 60, p.baseY - 60, "wave").setTint(PENGUINS[slot].color).setScale(0.5);
+        const w = this.add.image(p.img.x + 60, p.baseY - 60, "wave").setTint(CHARACTERS[p.character].color).setScale(0.5);
         this.tweens.add({ targets: w, x: w.x + 120, y: w.y - 80, scale: 1.1, alpha: 0, duration: 700, onComplete: () => w.destroy() });
       });
     }
@@ -250,42 +273,52 @@ const game = new Phaser.Game({
 });
 
 // ---------- 흔들림 수신 → 박자 보정 후 연주 ----------
-function perform(slot, intensity) {
+function perform(slot, character, intensity) {
   state.plays++;
   state.lastIntensity = intensity;
   state.lastSlot = slot;
-  if (state.started) playInstrument(slot, intensity);
+  state.lastCharacter = character;
+  if (state.started) playInstrument(character, intensity);
   if (stage) stage.perform(slot, intensity);
 }
 
-// 펭귄(폰)마다 따로 박자 보정: 같은 박자에 온 흔들림은 펭귄별로 가장 센 것 하나 → 여러 악기가 겹쳐 합주가 된다
-const beatQueues = PENGUINS.map(p =>
-  createBeatQueue({ onBeat: v => perform(p.slot, v), schedule: (fn, ms) => setTimeout(fn, ms), bpm: BPM })
+// 자리(폰)마다 따로 박자 보정: 같은 박자에 온 흔들림은 자리별로 가장 센 것 하나 → 여러 악기가 겹쳐 합주가 된다
+const queuedCharacter = [0, 1, 2, 3]; // 자리별로 박자를 기다리는 흔들림의 캐릭터
+const beatQueues = Array.from({ length: SLOT_COUNT }, (_, slot) =>
+  createBeatQueue({ onBeat: v => perform(slot, queuedCharacter[slot], v), schedule: (fn, ms) => setTimeout(fn, ms), bpm: BPM })
 );
 
 const slotOf = msg => (msg && isValidSlot(msg.slot) ? msg.slot : 0);
+// 메시지에 캐릭터가 없으면(예전 폰) 그 자리에 서 있는 캐릭터
+const characterOf = (msg, slot) => (msg && isValidCharacter(msg.character) ? msg.character : state.stage[slot]);
 
 function onPlay(msg) {
   const intensity = msg && typeof msg.intensity === "number" ? msg.intensity : 0.5;
   const slot = slotOf(msg);
+  const character = characterOf(msg, slot);
   if (!state.started) {
     debug.received(intensity, 0);
-    return perform(slot, intensity); // 시작 전: 움직임만(소리 잠금 상태)
+    return perform(slot, character, intensity); // 시작 전: 움직임만(소리 잠금 상태)
   }
   const now = performance.now();
   debug.received(intensity, Math.round(nearestBeat(now, beatOrigin, BPM).delay));
+  queuedCharacter[slot] = character;
   beatQueues[slot](intensity, now, beatOrigin);
 }
 
-// ---------- 펭귄 효과음 ----------
+// ---------- 특별 버튼: 캐릭터 소리(꽥·어흥·뿅·야옹) ----------
+function playEffect(character) {
+  if (state.started) playOnce(sounds[CHARACTERS[character].effect], 1);
+}
+
 function onEffect(msg) {
   const slot = slotOf(msg);
   state.effects++;
-  if (state.started) playOnce(sounds.squawk, 1);
+  playEffect(characterOf(msg, slot));
   if (stage) stage.squawk(slot);
 }
 
-// ---------- 누르고 말하기: 16bit PCM → 펭귄 목소리로 재생 ----------
+// ---------- 누르고 말하기: 16bit PCM → 캐릭터 목소리 높이로 재생 ----------
 function makeBuffer(ctx, samples, rate) {
   try {
     const buf = ctx.createBuffer(1, samples.length, rate);
@@ -308,12 +341,13 @@ function onVoice(msg) {
   const samples = int16ToFloat(toInt16(msg.pcm));
   if (!samples.length || !(msg.rate > 0)) return;
   const slot = slotOf(msg);
+  const pitch = CHARACTERS[characterOf(msg, slot)].voicePitch; // 곰은 낮게, 토끼는 높게
   const ctx = Howler.ctx;
   const source = ctx.createBufferSource();
   source.buffer = makeBuffer(ctx, samples, msg.rate);
-  source.playbackRate.value = VOICE_PITCH;
+  source.playbackRate.value = pitch;
   source.connect(Howler.masterGain || ctx.destination);
-  const seconds = samples.length / msg.rate / VOICE_PITCH;
+  const seconds = samples.length / msg.rate / pitch;
   state.voices++;
   if (voicesPlaying++ === 0) sounds.bgm.fade(sounds.bgm.volume(), BGM_DUCK, 150);
   source.onended = () => {
@@ -352,15 +386,27 @@ const hex = c => "#" + ("000000" + c.toString(16)).slice(-6);
 function showPlayers(msg) {
   state.players = (msg && msg.count) || 0;
   state.slots = msg && Array.isArray(msg.slots) ? msg.slots.filter(isValidSlot) : [];
-  // 연결된 펭귄 색깔 점(QR 아래)
+  // 자리별 캐릭터: 폰이 없으면 기본 펭귄, 같은 자리를 여럿이 쓰면 먼저 들어온 폰의 캐릭터
+  const characters = [0, 1, 2, 3];
+  const filled = {};
+  const players = msg && Array.isArray(msg.players) ? msg.players : [];
+  players.forEach(p => {
+    if (p && isValidSlot(p.slot) && isValidCharacter(p.character) && !filled[p.slot]) {
+      filled[p.slot] = true;
+      characters[p.slot] = p.character;
+    }
+  });
+  state.stage = characters;
+  // 연결된 캐릭터 색깔 점(QR 아래)
   playersEl.innerHTML = "";
   state.slots.forEach(slot => {
     const d = document.createElement("div");
     d.className = "phone";
-    d.style.background = hex(PENGUINS[slot].color);
+    d.style.background = hex(CHARACTERS[characters[slot]].color);
     playersEl.appendChild(d);
   });
-  if (stage) stage.setActiveSlots(state.slots);
+  // 캐릭터가 바뀐 자리는 "펑" 하고 바뀌며 자기 소리를 한 번 낸다
+  if (stage) stage.setPlayers(state.slots, characters).forEach(slot => playEffect(characters[slot]));
 }
 
 let tvToken = null;
@@ -425,6 +471,7 @@ debug = createTvDebug({
     code: state.code,
     players: state.players,
     slots: state.slots,
+    characters: state.stage,
     plays: state.plays,
     effects: state.effects,
     voices: state.voices,

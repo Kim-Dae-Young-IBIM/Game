@@ -2,12 +2,13 @@
 
 export const EVENTS = {
   TV_CREATE: "tv:create", // TV → 서버 (ack: {code})
-  PHONE_JOIN: "phone:join", // 폰 → 서버 {code, slot?} (ack: {ok, slot, instrument})
+  PHONE_JOIN: "phone:join", // 폰 → 서버 {code, slot?, character?} (ack: {ok, slot, character})
+  CHOOSE: "phone:choose", // 폰 → 서버 {dir: 1|-1} (ack: {character}) — ◀ ▶ 캐릭터 고르기
   SHAKE: "phone:shake", // 폰 → 서버 {intensity}
-  PLAY: "tv:play", // 서버 → TV {intensity, slot, phoneId}
-  PLAYERS: "tv:players", // 서버 → TV {count, slots: [쓰는 자리]}
-  EFFECT: "phone:effect", // 폰 → 서버 {} / 서버 → TV {slot, type: "squawk"} — 펭귄 효과음 버튼
-  VOICE: "phone:voice", // 폰 → 서버 {pcm, rate} / 서버 → TV {slot, pcm, rate} — 누르고 말하기
+  PLAY: "tv:play", // 서버 → TV {intensity, slot, character, phoneId}
+  PLAYERS: "tv:players", // 서버 → TV {count, slots: [쓰는 자리], players: [{slot, character}]}
+  EFFECT: "phone:effect", // 폰 → 서버 {} / 서버 → TV {slot, character} — 특별 버튼(캐릭터 소리)
+  VOICE: "phone:voice", // 폰 → 서버 {pcm, rate} / 서버 → TV {slot, character, pcm, rate} — 누르고 말하기
   ROOM_CLOSED: "room:closed", // 서버 → 폰 (TV가 돌아오지 않음)
   PING: "debug:ping", // TV·폰 → 서버 (ack: 서버 시각) — 왕복 지연 측정
   CLIENT_LOG: "client:log", // TV·폰 → 서버 {role, kind, message} — 오류·진단 기록을 서버 기록(Render Logs)에 출력
